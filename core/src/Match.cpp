@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <set>
 #include <stdexcept>
 
@@ -35,9 +36,24 @@ Status Match::ValidateTeam(const Team& t, int squadSize) {
     return Status::Ok();
 }
 
+Status Match::ValidateRules(const MatchRules& r) {
+    if (r.ballsPerOver < 1 || r.ballsPerOver > 10) return Status::Err("balls per over must be 1-10");
+    if (r.oversPerInnings < 0 || r.oversPerInnings > 1000) return Status::Err("overs per innings out of range");
+    if (r.inningsPerSide != 1 && r.inningsPerSide != 2) return Status::Err("innings per side must be 1 or 2");
+    if (r.squadSize < 2 || r.squadSize > 15) return Status::Err("squad size out of range");
+    if (r.maxOversPerBowler < 0 || r.followOnLead < 0 || r.matchOverLimit < 0 || r.newBallAfterOvers < 0)
+        return Status::Err("negative playing-condition value");
+    if (r.widePenalty < 0 || r.noBallPenalty < 0) return Status::Err("negative penalty");
+    if (r.oversPerInnings == 0 && r.schedule.enabled == false && r.matchOverLimit == 0 && r.inningsPerSide == 1)
+        return Status::Err("an unlimited-overs innings needs a schedule or an over limit");
+    if (!(r.weather.minutesPerOver > 0)) return Status::Err("minutes per over must be positive");
+    return Status::Ok();
+}
+
 Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
     : rules_(std::move(rules)), teams_(std::move(teams)), battingFirst_(battingFirst) {
     if (battingFirst != 0 && battingFirst != 1) throw std::invalid_argument("battingFirst must be 0 or 1");
+    if (Status s = ValidateRules(rules_); !s) throw std::invalid_argument(s.error);
     if (rules_.drs.reviewsPerInnings < 0 || rules_.drs.reviewTimerSeconds < 0)
         throw std::invalid_argument("DRS settings cannot be negative");
     for (const auto& t : teams_) {
@@ -185,22 +201,22 @@ static Status NotInProgress(MatchPhase p) {
     return Status::Err("waiting for the follow-on decision");
 }
 
-Status Match::SetOpeners(int s, int n) {
+Status Match::SetOpenersImpl(int s, int n) {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     return Current().SetOpeners(s, n);
 }
 
-Status Match::SetBowler(int b) {
+Status Match::SetBowlerImpl(int b) {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     return Current().SetBowler(b);
 }
 
-Status Match::SetNextBatter(int b) {
+Status Match::SetNextBatterImpl(int b) {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     return Current().SetNextBatter(b);
 }
 
-Status Match::Bowl(const Delivery& d, DeliveryRecord* out) {
+Status Match::BowlImpl(const Delivery& d, DeliveryRecord* out) {
     if (pending_) return Status::Err("a decision is pending: review it or accept it first");
     return BowlInternal(d, out);
 }
@@ -228,7 +244,7 @@ Status Match::BowlInternal(const Delivery& d, DeliveryRecord* out) {
     return Status::Ok();
 }
 
-Status Match::Declare() {
+Status Match::DeclareImpl() {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     if (pending_) return Status::Err("a decision is pending");
     const size_t before = innings_.size();
@@ -240,7 +256,7 @@ Status Match::Declare() {
     return s;
 }
 
-Status Match::DecideFollowOn(bool enforce) {
+Status Match::DecideFollowOnImpl(bool enforce) {
     if (phase_ != MatchPhase::AwaitingFollowOnDecision) return Status::Err("no follow-on decision is pending");
     followOn_ = enforce;
     StartInnings(enforce ? 1 - battingFirst_ : battingFirst_, std::nullopt);
@@ -248,7 +264,7 @@ Status Match::DecideFollowOn(bool enforce) {
     return Status::Ok();
 }
 
-void Match::CallDraw() {
+void Match::CallDrawImpl() {
     if (phase_ == MatchPhase::Complete) return;
     pending_.reset();
     Current().ForceComplete();
@@ -271,7 +287,7 @@ void Match::NoResult(const std::string& why) {
     result_.summary = why;
 }
 
-void Match::Abandon() {
+void Match::AbandonImpl() {
     if (phase_ == MatchPhase::Complete) return;
     pending_.reset();
     if (!LimitedOvers()) {
@@ -413,7 +429,7 @@ Status Match::CutInnings(int idx, int overs) {
     return Status::Ok();
 }
 
-Status Match::ReduceOvers(int oversThis, int oversSecond) {
+Status Match::ReduceOversImpl(int oversThis, int oversSecond) {
     if (!LimitedOvers()) return Status::Err("overs are only reduced in limited-overs cricket; Test time comes off the day");
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     if (pending_) return Status::Err("a decision is pending");
@@ -441,7 +457,7 @@ Status Match::ReduceOvers(int oversThis, int oversSecond) {
     return Status::Ok();
 }
 
-Status Match::RainDelay(int minutes) {
+Status Match::RainDelayImpl(int minutes) {
     if (minutes <= 0) return Status::Err("minutes lost must be positive");
     if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
     if (pending_) return Status::Err("a decision is pending");
@@ -504,7 +520,7 @@ Status Match::RainDelay(int minutes) {
     return s;
 }
 
-Status Match::LoseRestOfDay() {
+Status Match::LoseRestOfDayImpl() {
     if (!rules_.schedule.enabled) return Status::Err("only scheduled (Test) matches have days");
     if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
     const int left = std::max(0, clock_.ballsAvailableToday - clock_.ballsToday);
@@ -524,7 +540,7 @@ int Match::ReviewEntitledSide() const {
     return pending_->onFieldOut ? BattingSide() : FieldingSide();
 }
 
-Status Match::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
+Status Match::AwardPenaltyRunsImpl(int side, int runs, const std::string& reason) {
     if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
     if (pending_) return Status::Err("a decision is pending");
     if (side != 0 && side != 1) return Status::Err("side must be 0 or 1");
@@ -573,7 +589,7 @@ void Match::RecomputeTarget() {
     cur.SetTarget(theirs - ours + 1);
 }
 
-Status Match::TakeNewBall() {
+Status Match::TakeNewBallImpl() {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     if (pending_) return Status::Err("a decision is pending");
     return Current().TakeNewBall();
@@ -615,7 +631,7 @@ Status Match::ValidateCase(const DecisionCase& c) const {
     return Status::Ok();
 }
 
-Status Match::Appeal(const DecisionCase& c, DecisionRecord* decision, DeliveryRecord* ball) {
+Status Match::AppealImpl(const DecisionCase& c, DecisionRecord* decision, DeliveryRecord* ball) {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     if (pending_) return Status::Err("a decision is already pending");
     if (Current().State() != InningsState::InPlay) return Status::Err("no ball can be bowled right now");
@@ -638,7 +654,7 @@ Status Match::Appeal(const DecisionCase& c, DecisionRecord* decision, DeliveryRe
     return Status::Ok();
 }
 
-Status Match::ReviewDecision(int side, DecisionRecord* decision, DeliveryRecord* ball) {
+Status Match::ReviewDecisionImpl(int side, DecisionRecord* decision, DeliveryRecord* ball) {
     if (!pending_) return Status::Err("there is no decision to review");
     const int entitled = ReviewEntitledSide();
     if (side != entitled)
@@ -652,7 +668,7 @@ Status Match::ReviewDecision(int side, DecisionRecord* decision, DeliveryRecord*
     return ApplyDecision(o, true, side, decision, ball);
 }
 
-Status Match::AcceptDecision(DecisionRecord* decision, DeliveryRecord* ball) {
+Status Match::AcceptDecisionImpl(DecisionRecord* decision, DeliveryRecord* ball) {
     if (!pending_) return Status::Err("there is no decision to accept");
     return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
 }
@@ -682,6 +698,156 @@ Status Match::ApplyDecision(const DrsOutcome& o, bool reviewed, int side, Decisi
     decisions_.push_back(rec);
     if (decision) *decision = rec;
     return BowlInternal(d, ball);
+}
+
+// ---------------------------------------------------------------------------
+// Public actions: each successful outermost call is appended to the journal,
+// which is what a save file replays (see SaveGame.h).
+
+template <class F>
+Status Match::Record(MatchAction a, F&& f) {
+    const bool outer = apiDepth_ == 0;
+    ++apiDepth_;
+    Status s = f();
+    --apiDepth_;
+    if (outer && s) journal_.push_back(std::move(a));
+    return s;
+}
+
+namespace {
+MatchAction Act(ActionType t, int a = 0, int b = 0) {
+    MatchAction x;
+    x.type = t;
+    x.a = a;
+    x.b = b;
+    return x;
+}
+}  // namespace
+
+Status Match::SetOpeners(int s, int n) {
+    return Record(Act(ActionType::SetOpeners, s, n), [&] { return SetOpenersImpl(s, n); });
+}
+Status Match::SetBowler(int b) {
+    return Record(Act(ActionType::SetBowler, b), [&] { return SetBowlerImpl(b); });
+}
+Status Match::SetNextBatter(int b) {
+    return Record(Act(ActionType::SetNextBatter, b), [&] { return SetNextBatterImpl(b); });
+}
+Status Match::Bowl(const Delivery& d, DeliveryRecord* out) {
+    MatchAction a = Act(ActionType::Bowl);
+    a.delivery = d;
+    return Record(std::move(a), [&] { return BowlImpl(d, out); });
+}
+Status Match::Declare() {
+    return Record(Act(ActionType::Declare), [&] { return DeclareImpl(); });
+}
+Status Match::Appeal(const DecisionCase& c, DecisionRecord* decision, DeliveryRecord* ball) {
+    MatchAction a = Act(ActionType::Appeal);
+    a.decision = c;
+    return Record(std::move(a), [&] { return AppealImpl(c, decision, ball); });
+}
+Status Match::ReviewDecision(int side, DecisionRecord* decision, DeliveryRecord* ball) {
+    return Record(Act(ActionType::Review, side), [&] { return ReviewDecisionImpl(side, decision, ball); });
+}
+Status Match::AcceptDecision(DecisionRecord* decision, DeliveryRecord* ball) {
+    return Record(Act(ActionType::Accept), [&] { return AcceptDecisionImpl(decision, ball); });
+}
+Status Match::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
+    MatchAction a = Act(ActionType::Penalty, side, runs);
+    a.text = reason;
+    return Record(std::move(a), [&] { return AwardPenaltyRunsImpl(side, runs, reason); });
+}
+Status Match::TakeNewBall() {
+    return Record(Act(ActionType::NewBall), [&] { return TakeNewBallImpl(); });
+}
+Status Match::DecideFollowOn(bool enforce) {
+    return Record(Act(ActionType::FollowOn, enforce ? 1 : 0), [&] { return DecideFollowOnImpl(enforce); });
+}
+Status Match::RainDelay(int minutes) {
+    return Record(Act(ActionType::Rain, minutes), [&] { return RainDelayImpl(minutes); });
+}
+Status Match::ReduceOvers(int oversThis, int oversSecond) {
+    return Record(Act(ActionType::ReduceOvers, oversThis, oversSecond),
+                  [&] { return ReduceOversImpl(oversThis, oversSecond); });
+}
+Status Match::LoseRestOfDay() {
+    return Record(Act(ActionType::LoseDay), [&] { return LoseRestOfDayImpl(); });
+}
+void Match::CallDraw() {
+    Record(Act(ActionType::CallDraw), [&] {
+        if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+        CallDrawImpl();
+        return Status::Ok();
+    });
+}
+void Match::Abandon() {
+    Record(Act(ActionType::Abandon), [&] {
+        if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+        AbandonImpl();
+        return Status::Ok();
+    });
+}
+
+Status Match::Apply(const MatchAction& a) {
+    switch (a.type) {
+        case ActionType::SetOpeners: return SetOpeners(a.a, a.b);
+        case ActionType::SetBowler: return SetBowler(a.a);
+        case ActionType::SetNextBatter: return SetNextBatter(a.a);
+        case ActionType::Bowl: return Bowl(a.delivery);
+        case ActionType::Declare: return Declare();
+        case ActionType::Appeal: return Appeal(a.decision);
+        case ActionType::Review: return ReviewDecision(a.a);
+        case ActionType::Accept: return AcceptDecision();
+        case ActionType::FollowOn: return DecideFollowOn(a.a != 0);
+        case ActionType::Penalty: return AwardPenaltyRuns(a.a, a.b, a.text);
+        case ActionType::NewBall: return TakeNewBall();
+        case ActionType::Rain: return RainDelay(a.a);
+        case ActionType::ReduceOvers: return ReduceOvers(a.a, a.b);
+        case ActionType::LoseDay: return LoseRestOfDay();
+        case ActionType::CallDraw:
+            if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+            CallDraw();
+            return Status::Ok();
+        case ActionType::Abandon:
+            if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+            Abandon();
+            return Status::Ok();
+    }
+    return Status::Err("unknown action");
+}
+
+std::string Match::StateFingerprint() const {
+    // Everything a player could see, in a canonical text form. Two matches
+    // with the same fingerprint are indistinguishable to the game.
+    std::string f;
+    char buf[160];
+    auto add = [&](const char* fmt, auto... v) {
+        std::snprintf(buf, sizeof buf, fmt, v...);
+        f += buf;
+    };
+    add("P%d R%d W%d V%d %s|", static_cast<int>(phase_), static_cast<int>(result_.kind), result_.winner, result_.value,
+        result_.summary.c_str());
+    for (const auto& i : innings_) {
+        const Extras& e = i.GetExtras();
+        add("I%d s%d t%d w%d b%d x%d,%d,%d,%d,%d T%d E%d st%d ns%d bw%d lb%d fh%d mo%d nb%d|", i.Index(), i.BattingSide(),
+            i.Total(), i.Wickets(), i.LegalBalls(), e.wides, e.noBalls, e.byes, e.legByes, e.penalty,
+            i.Target() ? *i.Target() : -1, static_cast<int>(i.EndReason()), i.Striker(), i.NonStriker(),
+            i.CurrentBowler(), i.LastOverBowler(), i.NextBallIsFreeHit() ? 1 : 0, i.MaxOvers(),
+            i.OversWithCurrentBall());
+        for (int p = 0; p < rules_.squadSize; ++p) {
+            const BatterCard& bc = i.Batter(p);
+            const BowlerCard& bo = i.Bowler(p);
+            add("%d.%d.%d.%d.%d.%d;%d.%d.%d.%d ", bc.runs, bc.balls, bc.out ? 1 : 0, static_cast<int>(bc.how), bc.bowler,
+                bc.batted ? 1 : 0, bo.legalBalls, bo.runs, bo.wickets, bo.maidens);
+        }
+        f += "|";
+    }
+    add("C%d.%d.%d.%d.%d.%d.%d|", clock_.day, clock_.session, clock_.ballsToday, clock_.ballsAvailableToday,
+        clock_.makeUpBalls, clock_.startDay, clock_.ballsLostToday);
+    add("D%zu.%zu.%zu.%zu R%d.%d P%d F%d|", decisions_.size(), penalties_.size(), intervals_.size(), rainLog_.size(),
+        reviewsLeft_[0], reviewsLeft_[1], pending_ ? 1 : 0, followOn_ ? 1 : 0);
+    add("Q%.6f.%.6f.%d.%d.%d|", resources_[0], resources_[1], plannedOvers_[0], plannedOvers_[1], bufferUsed_);
+    return f;
 }
 
 }  // namespace cricket

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.0] - 2026-11-20 - Rules milestone, Stage D: save, resume and recovery
+
+### Added
+- Action journal in `Match` and input journal in `MatchSession` (refused
+  inputs included), with `Apply` / `Replay` and canonical
+  `StateFingerprint`.
+- Versioned text save format for matches and server sessions
+  (`SaveGame.h`): checksum, header / version / kind checks, rules
+  validation, replay of every step, accepted/refused agreement for sessions,
+  final-state fingerprint check.
+- Safe file saves (temp file + `.bak` + atomic rename) and automatic backup
+  fallback on load.
+- Crash logs (`MatchJournal`, `SessionJournal`) with per-line checksums, and
+  `RecoverMatch` / `RecoverSession` that keep every intact entry.
+- `Match::ValidateRules`. `docs/SAVE_AND_RESUME.md`. 14 new tests (175
+  total).
+
+### Fixed (found by tests before release)
+- FNV-1a offset basis constant was one digit short. Checksums now match the
+  standard algorithm (reference values tested).
+
 ## [0.5.0] - 2026-11-20 - Rules milestone, Stage C: rain and revised targets
 
 ### Added

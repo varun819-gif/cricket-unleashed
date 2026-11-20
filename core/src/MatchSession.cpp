@@ -26,7 +26,12 @@ std::string BallText(const Match& m, const DeliveryRecord& r) {
 }  // namespace
 
 MatchSession::MatchSession(MatchRules rules, std::array<Team, 2> teams, uint64_t serverSeed)
-    : rules_(std::move(rules)), teams_(std::move(teams)), toss_(serverSeed), ai_(serverSeed ^ 0x9e3779b97f4a7c15ULL) {
+    : rules_(std::move(rules)),
+      teams_(std::move(teams)),
+      seed_(serverSeed),
+      toss_(serverSeed),
+      ai_(serverSeed ^ 0x9e3779b97f4a7c15ULL) {
+    if (Status s = Match::ValidateRules(rules_); !s) throw std::invalid_argument(s.error);
     for (const auto& t : teams_) {
         Status s = Match::ValidateTeam(t, rules_.squadSize);
         if (!s) throw std::invalid_argument(s.error);
@@ -42,7 +47,7 @@ int MatchSession::SideOf(const std::string& player) const {
     return -1;
 }
 
-Status MatchSession::Join(const std::string& player, int side) {
+Status MatchSession::JoinImpl(const std::string& player, int side) {
     if (player.empty()) return Status::Err("player id required");
     if (side != 0 && side != 1) return Status::Err("side must be 0 or 1");
     if (SideOf(player) >= 0) return Status::Err("player already joined");
@@ -144,7 +149,7 @@ void MatchSession::EnsureLegalField() {
     Log("field", teams_[side].name + " field adjusted to meet fielding restrictions");
 }
 
-Status MatchSession::Submit(const Command& c) {
+Status MatchSession::SubmitImpl(const Command& c) {
     const int side = SideOf(c.player);
     if (side < 0) return Status::Err("unknown player");
     auto& last = lastSeq_[c.player];
@@ -250,7 +255,7 @@ Status MatchSession::Apply(int side, const Command& c) {
     return Status::Err("unknown command");
 }
 
-Status MatchSession::ResolveDelivery(const Delivery& d) {
+Status MatchSession::ResolveDeliveryImpl(const Delivery& d) {
     if (WaitingFor().what != "delivery") return Status::Err("not ready for a delivery");
     EnsureLegalField();
     DeliveryRecord rec;
@@ -321,7 +326,7 @@ Status MatchSession::FinishDecision(Status s, const DecisionRecord& d, const Del
     return s;
 }
 
-Status MatchSession::ResolveAppeal(const DecisionCase& c) {
+Status MatchSession::ResolveAppealImpl(const DecisionCase& c) {
     if (WaitingFor().what != "delivery") return Status::Err("not ready for a delivery");
     EnsureLegalField();
     DecisionRecord dec;
@@ -348,7 +353,7 @@ Status MatchSession::ResolveAppeal(const DecisionCase& c) {
     return s;
 }
 
-Status MatchSession::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
+Status MatchSession::AwardPenaltyRunsImpl(int side, int runs, const std::string& reason) {
     if (!match_) return Status::Err("match has not started");
     if (Status s = match_->AwardPenaltyRuns(side, runs, reason); !s) return s;
     const auto& p = match_->Penalties().back();
@@ -368,7 +373,7 @@ void MatchSession::Resume() {
                                         : std::string("Play resumes"));
 }
 
-Status MatchSession::ResumeAfterInterval() {
+Status MatchSession::ResumeAfterIntervalImpl() {
     if (!paused_) return Status::Err("play is not paused");
     Resume();
     RunAi();
@@ -396,14 +401,14 @@ Status MatchSession::AfterWeather(Status s, std::optional<int> targetBefore, siz
     return s;
 }
 
-Status MatchSession::RainDelay(int minutes) {
+Status MatchSession::RainDelayImpl(int minutes) {
     if (!match_) return Status::Err("match has not started");
     const auto before = match_->Current().Target();
     const size_t rain = match_->RainLog().size();
     return AfterWeather(match_->RainDelay(minutes), before, rain);
 }
 
-Status MatchSession::ReduceOvers(int oversThis, int oversSecond) {
+Status MatchSession::ReduceOversImpl(int oversThis, int oversSecond) {
     if (!match_) return Status::Err("match has not started");
     const auto before = match_->Current().Target();
     const size_t rain = match_->RainLog().size();
@@ -412,14 +417,14 @@ Status MatchSession::ReduceOvers(int oversThis, int oversSecond) {
     return AfterWeather(s, before, rain);
 }
 
-Status MatchSession::LoseRestOfDay() {
+Status MatchSession::LoseRestOfDayImpl() {
     if (!match_) return Status::Err("match has not started");
     const auto before = match_->Current().Target();
     const size_t rain = match_->RainLog().size();
     return AfterWeather(match_->LoseRestOfDay(), before, rain);
 }
 
-Status MatchSession::AbandonMatch() {
+Status MatchSession::AbandonMatchImpl() {
     if (!match_) return Status::Err("match has not started");
     if (match_->Phase() == MatchPhase::Complete) return Status::Err("match is over");
     match_->Abandon();
@@ -436,7 +441,7 @@ Status MatchSession::TimeOutReview() {
     return ExpireReviewWindow();
 }
 
-Status MatchSession::Tick(int64_t nowMs) {
+Status MatchSession::TickImpl(int64_t nowMs) {
     if (nowMs < nowMs_) return Status::Err("server clock went backwards; ignored");
     nowMs_ = nowMs;
     if (match_ && match_->HasPendingDecision() && reviewDeadlineMs_ && nowMs_ >= *reviewDeadlineMs_)
@@ -444,7 +449,7 @@ Status MatchSession::Tick(int64_t nowMs) {
     return Status::Ok();
 }
 
-Status MatchSession::SubmitAt(const Command& c, int64_t nowMs) {
+Status MatchSession::SubmitAtImpl(const Command& c, int64_t nowMs) {
     if (Status s = Tick(nowMs); !s && nowMs < nowMs_) return s;
     return Submit(c);
 }
@@ -454,7 +459,7 @@ int64_t MatchSession::ReviewMsLeft() const {
     return std::max<int64_t>(0, *reviewDeadlineMs_ - nowMs_);
 }
 
-Status MatchSession::ExpireReviewWindow() {
+Status MatchSession::ExpireReviewWindowImpl() {
     if (!match_ || !match_->HasPendingDecision()) return Status::Err("no decision is pending");
     DecisionRecord dec;
     DeliveryRecord ball;
@@ -463,7 +468,7 @@ Status MatchSession::ExpireReviewWindow() {
     return s;
 }
 
-void MatchSession::RunAi() {
+void MatchSession::RunAiImpl() {
     for (int guard = 0; guard < 64; ++guard) {
         Pending p = WaitingFor();
         if (p.what == "delivery") {
@@ -527,6 +532,136 @@ void MatchSession::RunAi() {
             return;
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public inputs: every outermost call is journaled - even refused ones, since
+// a refused command still uses up its sequence number. Replaying the inputs
+// on a new session with the same seed rebuilds it exactly (see SaveGame.h).
+
+template <class F>
+Status MatchSession::Record(SessionInput in, F&& f) {
+    const bool outer = apiDepth_ == 0;
+    ++apiDepth_;
+    Status s = f();
+    --apiDepth_;
+    if (outer) {
+        in.ok = s.ok;
+        inputs_.push_back(std::move(in));
+    }
+    return s;
+}
+
+namespace {
+SessionInput In(InputType t) {
+    SessionInput x;
+    x.type = t;
+    return x;
+}
+}  // namespace
+
+Status MatchSession::Join(const std::string& player, int side) {
+    SessionInput in = In(InputType::Join);
+    in.text = player;
+    in.a = side;
+    return Record(std::move(in), [&] { return JoinImpl(player, side); });
+}
+Status MatchSession::Submit(const Command& c) {
+    SessionInput in = In(InputType::Submit);
+    in.command = c;
+    return Record(std::move(in), [&] { return SubmitImpl(c); });
+}
+Status MatchSession::SubmitAt(const Command& c, int64_t nowMs) {
+    SessionInput in = In(InputType::SubmitAt);
+    in.command = c;
+    in.ms = nowMs;
+    return Record(std::move(in), [&] { return SubmitAtImpl(c, nowMs); });
+}
+Status MatchSession::ResolveDelivery(const Delivery& d) {
+    SessionInput in = In(InputType::Delivery);
+    in.delivery = d;
+    return Record(std::move(in), [&] { return ResolveDeliveryImpl(d); });
+}
+Status MatchSession::ResolveAppeal(const DecisionCase& c) {
+    SessionInput in = In(InputType::Appeal);
+    in.decision = c;
+    return Record(std::move(in), [&] { return ResolveAppealImpl(c); });
+}
+Status MatchSession::ExpireReviewWindow() {
+    return Record(In(InputType::ExpireReview), [&] { return ExpireReviewWindowImpl(); });
+}
+Status MatchSession::Tick(int64_t nowMs) {
+    SessionInput in = In(InputType::Tick);
+    in.ms = nowMs;
+    return Record(std::move(in), [&] { return TickImpl(nowMs); });
+}
+void MatchSession::RunAi() {
+    Record(In(InputType::RunAi), [&] {
+        RunAiImpl();
+        return Status::Ok();
+    });
+}
+Status MatchSession::ResumeAfterInterval() {
+    return Record(In(InputType::Resume), [&] { return ResumeAfterIntervalImpl(); });
+}
+Status MatchSession::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
+    SessionInput in = In(InputType::Penalty);
+    in.a = side;
+    in.b = runs;
+    in.text = reason;
+    return Record(std::move(in), [&] { return AwardPenaltyRunsImpl(side, runs, reason); });
+}
+Status MatchSession::RainDelay(int minutes) {
+    SessionInput in = In(InputType::Rain);
+    in.a = minutes;
+    return Record(std::move(in), [&] { return RainDelayImpl(minutes); });
+}
+Status MatchSession::ReduceOvers(int oversThis, int oversSecond) {
+    SessionInput in = In(InputType::ReduceOvers);
+    in.a = oversThis;
+    in.b = oversSecond;
+    return Record(std::move(in), [&] { return ReduceOversImpl(oversThis, oversSecond); });
+}
+Status MatchSession::LoseRestOfDay() {
+    return Record(In(InputType::LoseDay), [&] { return LoseRestOfDayImpl(); });
+}
+Status MatchSession::AbandonMatch() {
+    return Record(In(InputType::Abandon), [&] { return AbandonMatchImpl(); });
+}
+
+Status MatchSession::Replay(const SessionInput& in) {
+    switch (in.type) {
+        case InputType::Join: return Join(in.text, in.a);
+        case InputType::Submit: return Submit(in.command);
+        case InputType::SubmitAt: return SubmitAt(in.command, in.ms);
+        case InputType::Delivery: return ResolveDelivery(in.delivery);
+        case InputType::Appeal: return ResolveAppeal(in.decision);
+        case InputType::ExpireReview: return ExpireReviewWindow();
+        case InputType::Tick: return Tick(in.ms);
+        case InputType::RunAi: RunAi(); return Status::Ok();
+        case InputType::Resume: return ResumeAfterInterval();
+        case InputType::Penalty: return AwardPenaltyRuns(in.a, in.b, in.text);
+        case InputType::Rain: return RainDelay(in.a);
+        case InputType::ReduceOvers: return ReduceOvers(in.a, in.b);
+        case InputType::LoseDay: return LoseRestOfDay();
+        case InputType::Abandon: return AbandonMatch();
+    }
+    return Status::Err("unknown input");
+}
+
+std::string MatchSession::StateFingerprint() const {
+    std::string f = match_ ? match_->StateFingerprint() : std::string("no-match");
+    f += "|toss" + std::to_string(static_cast<int>(toss_.Phase())) + "." + std::to_string(toss_.Winner()) + "." +
+         std::to_string(toss_.BattingFirst());
+    f += "|ev" + std::to_string(events_.size()) + ":" + (events_.empty() ? std::string() : events_.back().text);
+    f += "|now" + std::to_string(nowMs_) + "|dl" + std::to_string(reviewDeadlineMs_ ? *reviewDeadlineMs_ : -1);
+    f += "|pz" + std::to_string(paused_) + std::to_string(ready_[0]) + std::to_string(ready_[1]);
+    for (const auto& [p, q] : lastSeq_) f += "|" + p + "=" + std::to_string(q);
+    for (int s = 0; s < 2; ++s) {
+        f += "|h" + humans_[s] + "|f";
+        for (const auto& fp : fields_[s].fielders) f += fp.name + ",";
+    }
+    return f;
 }
 
 }  // namespace cricket

@@ -28,6 +28,7 @@ add_library(cricket_core
   core/src/Commentary.cpp
   core/src/MatchSession.cpp
   core/src/TeamFactory.cpp
+  core/src/SaveGame.cpp
 )
 target_include_directories(cricket_core PUBLIC core/include)
 
@@ -48,6 +49,7 @@ add_executable(cricket_tests
   core/tests/DrsCompleteTests.cpp
   core/tests/TestSessionTests.cpp
   core/tests/RainTests.cpp
+  core/tests/SaveTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core)
 # Lets tests read source files (information-hiding scan of the AI code).

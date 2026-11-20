@@ -15,6 +15,19 @@ namespace cricket {
 
 enum class MatchPhase { InProgress, AwaitingFollowOnDecision, Complete };
 
+// One recorded action (the journal that save files replay).
+enum class ActionType {
+    SetOpeners, SetBowler, SetNextBatter, Bowl, Declare, Appeal, Review, Accept,
+    FollowOn, CallDraw, Abandon, Penalty, NewBall, Rain, ReduceOvers, LoseDay,
+};
+struct MatchAction {
+    ActionType type = ActionType::Bowl;
+    int a = 0, b = 0;
+    Delivery delivery;
+    DecisionCase decision;
+    std::string text;
+};
+
 // Breaks in play. Lunch / tea / dinner / stumps happen in Test matches with a
 // session schedule; an innings break is recorded in every format.
 enum class IntervalKind { Lunch, Tea, Dinner, Stumps, InningsBreak };
@@ -78,6 +91,8 @@ public:
     Match& operator=(const Match&) = delete;
 
     static Status ValidateTeam(const Team& t, int squadSize);
+    // Sanity limits on playing conditions (protects against corrupt saves too).
+    static Status ValidateRules(const MatchRules& r);
 
     // Pass-through actions on the current innings (with extra team checks).
     Status SetOpeners(int striker, int nonStriker);
@@ -149,6 +164,15 @@ public:
     void CallDraw();
     void Abandon();
 
+    // ---- Journal (save / resume) ------------------------------------------
+    // Every successful action, in order. Replaying them on a new Match with
+    // the same rules, teams and batting side rebuilds this exact match.
+    const std::vector<MatchAction>& Journal() const { return journal_; }
+    Status Apply(const MatchAction& a);
+    // Canonical text of everything observable; equal fingerprints = same state.
+    std::string StateFingerprint() const;
+    int BattingFirst() const { return battingFirst_; }
+
     MatchPhase Phase() const { return phase_; }
     const MatchResult& Result() const { return result_; }
     const MatchRules& Rules() const { return rules_; }
@@ -162,6 +186,24 @@ public:
     bool FollowOnEnforced() const { return followOn_; }
 
 private:
+    template <class F>
+    Status Record(MatchAction a, F&& f);
+    Status SetOpenersImpl(int striker, int nonStriker);
+    Status SetBowlerImpl(int bowler);
+    Status SetNextBatterImpl(int batter);
+    Status BowlImpl(const Delivery& d, DeliveryRecord* out);
+    Status DeclareImpl();
+    Status AppealImpl(const DecisionCase& c, DecisionRecord* decision, DeliveryRecord* ball);
+    Status ReviewDecisionImpl(int side, DecisionRecord* decision, DeliveryRecord* ball);
+    Status AcceptDecisionImpl(DecisionRecord* decision, DeliveryRecord* ball);
+    Status AwardPenaltyRunsImpl(int side, int runs, const std::string& reason);
+    Status TakeNewBallImpl();
+    Status DecideFollowOnImpl(bool enforce);
+    Status RainDelayImpl(int minutes);
+    Status ReduceOversImpl(int oversThis, int oversSecond);
+    Status LoseRestOfDayImpl();
+    void CallDrawImpl();
+    void AbandonImpl();
     void Advance();
     Status BowlInternal(const Delivery& d, DeliveryRecord* out);
     Status ValidateCase(const DecisionCase& c) const;
@@ -200,6 +242,8 @@ private:
     int bufferUsed_ = 0;
     std::array<int, 2> plannedOvers_{0, 0};
     std::array<double, 2> resources_{0, 0};
+    std::vector<MatchAction> journal_;
+    int apiDepth_ = 0;
     std::vector<IntervalRecord> intervals_;
 };
 

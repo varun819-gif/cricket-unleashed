@@ -56,6 +56,22 @@ struct SessionEvent {
     std::optional<DecisionRecord> decision;
 };
 
+// One recorded input to the session (the journal that session saves replay).
+enum class InputType {
+    Join, Submit, SubmitAt, Delivery, Appeal, ExpireReview, Tick, RunAi, Resume,
+    Penalty, Rain, ReduceOvers, LoseDay, Abandon,
+};
+struct SessionInput {
+    InputType type = InputType::RunAi;
+    bool ok = true;        // whether the session accepted it (replay must agree)
+    std::string text;      // player id / penalty reason
+    int a = 0, b = 0;
+    int64_t ms = 0;
+    Command command;
+    Delivery delivery;
+    DecisionCase decision;
+};
+
 // What the session is waiting for next, and from which side.
 struct Pending {
     // "toss-call", "toss-decision", "openers", "bowler", "batter", "follow-on",
@@ -106,6 +122,14 @@ public:
     // Lets AI captains take any decisions that are theirs to take.
     void RunAi();
 
+    // ---- Journal (server crash recovery) --------------------------------
+    const std::vector<SessionInput>& Inputs() const { return inputs_; }
+    Status Replay(const SessionInput& in);
+    std::string StateFingerprint() const;
+    uint64_t Seed() const { return seed_; }
+    const MatchRules& Rules() const { return rules_; }
+    const std::array<Team, 2>& Teams() const { return teams_; }
+
     Pending WaitingFor() const;
     bool HasMatch() const { return match_ != nullptr; }
     const Match& GetMatch() const { return *match_; }
@@ -115,6 +139,22 @@ public:
     uint64_t LastEventId() const { return events_.empty() ? 0 : events_.back().id; }
 
 private:
+    template <class F>
+    Status Record(SessionInput in, F&& f);
+    Status JoinImpl(const std::string& player, int side);
+    Status SubmitImpl(const Command& c);
+    Status SubmitAtImpl(const Command& c, int64_t nowMs);
+    Status ResolveDeliveryImpl(const Delivery& d);
+    Status ResolveAppealImpl(const DecisionCase& c);
+    Status ExpireReviewWindowImpl();
+    Status TickImpl(int64_t nowMs);
+    void RunAiImpl();
+    Status ResumeAfterIntervalImpl();
+    Status AwardPenaltyRunsImpl(int side, int runs, const std::string& reason);
+    Status RainDelayImpl(int minutes);
+    Status ReduceOversImpl(int oversThis, int oversSecond);
+    Status LoseRestOfDayImpl();
+    Status AbandonMatchImpl();
     void Log(std::string kind, std::string text, std::optional<DeliveryRecord> ball = std::nullopt);
     Status Apply(int side, const Command& c);
     void StartMatch();
@@ -131,6 +171,7 @@ private:
 
     MatchRules rules_;
     std::array<Team, 2> teams_;
+    uint64_t seed_ = 0;
     Toss toss_;
     std::unique_ptr<Match> match_;
     std::array<FieldSetup, 2> fields_;
@@ -145,6 +186,8 @@ private:
     size_t intervalsSeen_ = 0;
     bool paused_ = false;
     std::array<bool, 2> ready_{false, false};
+    std::vector<SessionInput> inputs_;
+    int apiDepth_ = 0;
 };
 
 }  // namespace cricket
