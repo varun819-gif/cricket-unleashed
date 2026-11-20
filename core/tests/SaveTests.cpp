@@ -266,10 +266,10 @@ TEST(save_rejects_damaged_edited_and_foreign_files) {
 
     // Newer format, wrong kind.
     std::string newer = good;
-    newer.replace(newer.find(" match 1\n"), 9, " match 2\n");
+    newer.replace(newer.find(" match 2\n"), 9, " match 3\n");
     CHECK(LoadMatch(Reseal(newer)).status.error.find("newer") != std::string::npos);
     std::string session = good;
-    session.replace(session.find(" match 1\n"), 9, " session 1\n");
+    session.replace(session.find(" match 2\n"), 9, " session 2\n");
     CHECK(LoadMatch(Reseal(session)).status.error.find("session") != std::string::npos);
 
     // Impossible rules in the header are refused before anything is built.
@@ -278,6 +278,43 @@ TEST(save_rejects_damaged_edited_and_foreign_files) {
     CHECK(rl != std::string::npos);
     badRules.replace(rl, 14, "\nrules 0 20 0 ");  // 0 balls per over
     CHECK_ERR(LoadMatch(Reseal(badRules)).status);
+}
+
+TEST(save_version_1_files_still_load) {
+    // Version 1 had no run-out-review flag: convert a v2 save back to v1
+    // and check it loads, with the flag read as "not allowed".
+    MatchRules r = MatchRules::T20();
+    r.drs.reviewRunOutsAndStumpings = false;  // what a v1 game behaved like
+    Match m(r, TwoTeams(), 0);
+    Driver d(41);
+    d.Run(m, 80);
+    std::string text = SaveMatch(m);
+    std::string v1 = text;
+    v1.replace(v1.find(" match 2\n"), 9, " match 1\n");
+    // Drop the new field: it follows the wide/no-ball review flag in the rules line.
+    const size_t rl = v1.find("\nrules ");
+    const size_t end = v1.find('\n', rl + 1);
+    std::string line = v1.substr(rl + 1, end - rl - 1);
+    std::vector<std::string> tok;
+    for (size_t a = 0, b; a < line.size(); a = b + 1) {
+        b = line.find(' ', a);
+        if (b == std::string::npos) b = line.size();
+        tok.push_back(line.substr(a, b - a));
+    }
+    // rules: 14 fixed values + 3 per phase + 6 DRS values, then the new one.
+    const int phases = std::stoi(tok[14]);
+    const size_t newField = 15 + 3 * phases + 6;
+    CHECK_EQ(tok[newField], std::string("0"));
+    tok.erase(tok.begin() + static_cast<long>(newField));
+    std::string rebuilt;
+    for (size_t k = 0; k < tok.size(); ++k) rebuilt += (k ? " " : "") + tok[k];
+    v1.replace(rl + 1, line.size(), rebuilt);
+    MatchLoad l = LoadMatch(Reseal(v1));
+    CHECK_OK(l.status);
+    if (l.match) {
+        CHECK(!l.match->Rules().drs.reviewRunOutsAndStumpings);
+        CHECK_EQ(l.match->StateFingerprint(), m.StateFingerprint());
+    }
 }
 
 TEST(save_files_atomic_with_backup_fallback) {

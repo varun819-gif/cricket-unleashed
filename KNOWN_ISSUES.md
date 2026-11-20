@@ -32,9 +32,8 @@ this milestone have been removed (see CHANGELOG.md).
    per changeover, 98-over cap for make-up). There are no real session
    times, extra half hour, last-hour minimum, drinks breaks or over-rate
    penalties (see TEST_SESSIONS.md).
-8. **Run outs and stumpings are always umpire referrals.** Players cannot
-   review them, although ICC playing conditions allow it when the umpires
-   don't refer.
+8. *(Fixed in 0.7.0: players may review run outs and stumpings when the
+   competition's DRS rules allow it.)*
 9. **Run-out ends are simplified.** The new batter takes the dismissed
    batter's end based on runs completed. The real law (which end the wicket
    was broken at, whether batters had crossed) needs physics position data.

@@ -25,6 +25,9 @@ struct DrsRules {
     bool umpiresCallRetainsReview = true;  // "umpire's call" does not cost a review
     int reviewTimerSeconds = 15;           // time to ask for a review; 0 = no timer
     bool reviewWidesAndNoBalls = false;    // players may review wide / height no-ball calls
+    // Players may review run-out and stumping decisions the umpires did not
+    // refer (ICC playing conditions allow this; some competitions don't).
+    bool reviewRunOutsAndStumpings = true;
 
     // International standard playing conditions (2 per innings, umpire's call
     // keeps the review, 15-second timer).
@@ -35,7 +38,8 @@ struct DrsRules {
     static DrsRules NoTechnology();
     static DrsRules Custom(int reviewsPerInnings, int reviewTimerSeconds, bool umpiresCallRetainsReview = true);
     // "icc", "no-reviews", "no-tech" or "custom:<reviews>:<seconds>[:lose][:calls]"
-    // (":lose" = umpire's call costs a review, ":calls" = wides / height no-balls reviewable).
+    // (":lose" = umpire's call costs a review, ":calls" = wides / height no-balls reviewable,
+    //  ":norunouts" = players may not review run outs / stumpings).
     static bool FromName(const std::string& name, DrsRules* out);
 };
 

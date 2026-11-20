@@ -189,7 +189,10 @@ std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d
         }
         case Dismissal::Stumped:
         case Dismissal::RunOut: {
-            c.kind = DecisionKind::UmpireReferral;
+            // Usually the umpires refer it; sometimes they decide on the field
+            // and (if the competition allows) the players may review.
+            c.kind = m.Rules().drs.reviewRunOutsAndStumpings && U() < 0.3 ? DecisionKind::PlayerAppeal
+                                                                          : DecisionKind::UmpireReferral;
             c.mode = d.dismissal;
             double g = U();
             c.evidence.batterGrounded = g < 0.85 ? Evidence::No : g < 0.9 ? Evidence::Inconclusive : Evidence::Yes;

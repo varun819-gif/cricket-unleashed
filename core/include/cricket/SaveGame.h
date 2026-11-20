@@ -26,7 +26,9 @@
 
 namespace cricket {
 
-constexpr int kSaveFormatVersion = 1;
+// Version 2 added DrsRules::reviewRunOutsAndStumpings. Version 1 files still
+// load (that field is read as false, matching how they were played).
+constexpr int kSaveFormatVersion = 2;
 
 // ---- Whole-file saves ----------------------------------------------------
 std::string SaveMatch(const Match& m);

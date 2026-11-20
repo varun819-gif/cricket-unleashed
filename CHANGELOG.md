@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0] - 2026-11-20 - Run-out and stumping reviews
+
+### Added
+- Player reviews of run-out and stumping decisions made on the field,
+  controlled by `DrsRules::reviewRunOutsAndStumpings` (on in the
+  international preset, `:norunouts` to switch off, off with no player
+  reviews). The simulator sometimes leaves them to the on-field umpire.
+- Save format version 2 (stores the new setting). Version 1 saves still load.
+- 5 new tests (181 total).
+
 ## [0.6.1] - 2026-11-20 - Rules milestone: integration and documentation
 
 ### Added

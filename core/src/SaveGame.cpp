@@ -175,7 +175,7 @@ void Put(W& w, const MatchRules& r) {
     for (const auto& p : r.phases) w.I(p.firstOver).I(p.lastOver).I(p.maxOutsideCircle);
     const DrsRules& d = r.drs;
     w.B(d.playerReviews).B(d.thirdUmpire).I(d.reviewsPerInnings).B(d.umpiresCallRetainsReview).I(d.reviewTimerSeconds);
-    w.B(d.reviewWidesAndNoBalls);
+    w.B(d.reviewWidesAndNoBalls).B(d.reviewRunOutsAndStumpings);
     const SessionSchedule& s = r.schedule;
     w.B(s.enabled).I(s.days).I(s.oversPerDay).I(s.sessionsPerDay).I(s.oversLostPerInningsChange).I(s.maxOversPerDay);
     w.I(s.intervalNearOvers).B(s.dayNight);
@@ -183,7 +183,7 @@ void Put(W& w, const MatchRules& r) {
     w.I(x.minOversForResult).D(x.minutesPerOver).I(x.bufferMinutes).D(x.fullInningsScore);
 }
 
-void Get(R& in, MatchRules& r) {
+void Get(R& in, MatchRules& r, int version) {
     r.format = in.Enum<Format>(3);
     r.oversPerInnings = static_cast<int>(in.I(0, 1000));
     r.ballsPerOver = static_cast<int>(in.I(1, 10));
@@ -213,6 +213,7 @@ void Get(R& in, MatchRules& r) {
     d.umpiresCallRetainsReview = in.B();
     d.reviewTimerSeconds = static_cast<int>(in.I(0, 3600));
     d.reviewWidesAndNoBalls = in.B();
+    d.reviewRunOutsAndStumpings = version >= 2 ? in.B() : false;
     SessionSchedule& s = r.schedule;
     s.enabled = in.B();
     s.days = static_cast<int>(in.I(1, 10));
@@ -397,7 +398,7 @@ std::vector<std::string> SetupLines(const MatchRules& rules, const std::array<Te
 
 // Parses rules + teams starting at lines[*i]; advances *i.
 bool ParseSetup(const std::vector<std::string>& lines, size_t* i, MatchRules* rules, std::array<Team, 2>* teams,
-                std::string* err) {
+                std::string* err, int version) {
     auto fail = [&](const std::string& e) {
         *err = "line " + std::to_string(*i + 1) + ": " + e;
         return false;
@@ -406,7 +407,7 @@ bool ParseSetup(const std::vector<std::string>& lines, size_t* i, MatchRules* ru
     {
         R in(lines[*i]);
         if (in.Keyword() != "rules") return fail("expected rules");
-        Get(in, *rules);
+        Get(in, *rules, version);
         if (!in.Finished()) return fail(in.Ok() ? "unexpected extra values" : in.Error());
         ++*i;
     }
@@ -465,7 +466,8 @@ std::string Finish(std::string body) {
 }
 
 // Checks header + checksum; returns the lines without the checksum line.
-bool CheckFile(const std::string& text, const std::string& kind, std::vector<std::string>* lines, std::string* err) {
+bool CheckFile(const std::string& text, const std::string& kind, std::vector<std::string>* lines, std::string* err,
+               int* versionOut) {
     const size_t pos = text.rfind("checksum ");
     if (pos == std::string::npos || (pos > 0 && text[pos - 1] != '\n')) {
         *err = "not a complete save file (no checksum)";
@@ -506,6 +508,7 @@ bool CheckFile(const std::string& text, const std::string& kind, std::vector<std
         *err = "unknown save format version";
         return false;
     }
+    *versionOut = static_cast<int>(version);
     return true;
 }
 
@@ -585,12 +588,12 @@ std::string SaveMatch(const Match& m) {
 namespace {
 
 // Builds a match from setup lines (starting at *i) and replays action lines.
-MatchLoad BuildMatch(const std::vector<std::string>& lines, size_t i, bool requireEnd) {
+MatchLoad BuildMatch(const std::vector<std::string>& lines, size_t i, bool requireEnd, int version) {
     MatchLoad out;
     MatchRules rules;
     std::array<Team, 2> teams;
     std::string err;
-    if (!ParseSetup(lines, &i, &rules, &teams, &err)) {
+    if (!ParseSetup(lines, &i, &rules, &teams, &err, version)) {
         out.status = Status::Err(err);
         return out;
     }
@@ -650,12 +653,12 @@ MatchLoad BuildMatch(const std::vector<std::string>& lines, size_t i, bool requi
 }
 
 SessionLoad BuildSession(const std::vector<std::string>& lines, size_t i, bool requireEnd, bool stopOnError,
-                         size_t* stoppedAt) {
+                         size_t* stoppedAt, int version) {
     SessionLoad out;
     MatchRules rules;
     std::array<Team, 2> teams;
     std::string err;
-    if (!ParseSetup(lines, &i, &rules, &teams, &err)) {
+    if (!ParseSetup(lines, &i, &rules, &teams, &err, version)) {
         out.status = Status::Err(err);
         return out;
     }
@@ -729,12 +732,13 @@ SessionLoad BuildSession(const std::vector<std::string>& lines, size_t i, bool r
 MatchLoad LoadMatch(const std::string& text) {
     std::vector<std::string> lines;
     std::string err;
-    if (!CheckFile(text, "match", &lines, &err)) {
+    int version = 0;
+    if (!CheckFile(text, "match", &lines, &err, &version)) {
         MatchLoad out;
         out.status = Status::Err(err);
         return out;
     }
-    MatchLoad out = BuildMatch(lines, 1, true);
+    MatchLoad out = BuildMatch(lines, 1, true, version);
     if (!out.status) out.match.reset();
     return out;
 }
@@ -751,12 +755,13 @@ std::string SaveSession(const MatchSession& s) {
 SessionLoad LoadSession(const std::string& text) {
     std::vector<std::string> lines;
     std::string err;
-    if (!CheckFile(text, "session", &lines, &err)) {
+    int version = 0;
+    if (!CheckFile(text, "session", &lines, &err, &version)) {
         SessionLoad out;
         out.status = Status::Err(err);
         return out;
     }
-    SessionLoad out = BuildSession(lines, 1, true, false, nullptr);
+    SessionLoad out = BuildSession(lines, 1, true, false, nullptr, version);
     if (!out.status) out.session.reset();
     return out;
 }
@@ -860,7 +865,7 @@ namespace {
 // Shared front half of recovery: header check, returns payloads and the
 // index of the first entry after "begin".
 bool OpenJournal(const std::string& path, const std::string& kind, std::vector<std::string>* lines, size_t* first,
-                 size_t* discarded, std::string* err) {
+                 size_t* discarded, std::string* err, int* versionOut) {
     bool opened = false;
     *lines = ReadJournal(path, discarded, &opened);
     if (!opened) {
@@ -889,6 +894,7 @@ bool OpenJournal(const std::string& path, const std::string& kind, std::vector<s
         return false;
     }
     *first = 1;
+    *versionOut = static_cast<int>(version);
     return true;
 }
 }  // namespace
@@ -898,7 +904,8 @@ MatchLoad RecoverMatch(const std::string& journalPath, Recovery* info) {
     size_t first = 0, discarded = 0;
     std::string err;
     MatchLoad out;
-    if (!OpenJournal(journalPath, "match", &lines, &first, &discarded, &err)) {
+    int version = 0;
+    if (!OpenJournal(journalPath, "match", &lines, &first, &discarded, &err, &version)) {
         out.status = Status::Err(err);
         return out;
     }
@@ -906,7 +913,7 @@ MatchLoad RecoverMatch(const std::string& journalPath, Recovery* info) {
     size_t i = first;
     MatchRules rules;
     std::array<Team, 2> teams;
-    if (!ParseSetup(lines, &i, &rules, &teams, &err)) {
+    if (!ParseSetup(lines, &i, &rules, &teams, &err, version)) {
         out.status = Status::Err(err);
         return out;
     }
@@ -916,7 +923,7 @@ MatchLoad RecoverMatch(const std::string& journalPath, Recovery* info) {
         return out;
     }
     std::vector<std::string> setup(lines.begin(), lines.begin() + static_cast<long>(i) + 1);  // includes "start"
-    out = BuildMatch(setup, first, false);
+    out = BuildMatch(setup, first, false, version);
     if (!out.status) return out;
     size_t a = i + 2;  // after "start" and "begin"
     for (; a < lines.size(); ++a) {
@@ -934,12 +941,13 @@ SessionLoad RecoverSession(const std::string& journalPath, Recovery* info) {
     size_t first = 0, discarded = 0;
     std::string err;
     SessionLoad out;
-    if (!OpenJournal(journalPath, "session", &lines, &first, &discarded, &err)) {
+    int version = 0;
+    if (!OpenJournal(journalPath, "session", &lines, &first, &discarded, &err, &version)) {
         out.status = Status::Err(err);
         return out;
     }
     size_t stopped = lines.size();
-    out = BuildSession(lines, first, false, true, &stopped);
+    out = BuildSession(lines, first, false, true, &stopped, version);
     if (!out.status) return out;
     discarded += lines.size() - stopped;
     if (info) *info = {out.steps, discarded};

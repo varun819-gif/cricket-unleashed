@@ -613,9 +613,9 @@ Status Match::ValidateCase(const DecisionCase& c) const {
         return Status::Ok();
     }
     if (c.mode == Dismissal::None) return Status::Err("appeal needs a mode of dismissal");
-    if (c.kind == DecisionKind::PlayerAppeal && !IsPlayerReviewable(c.mode))
-        return Status::Err(std::string("players review caught, LBW or hit wicket; ") + ToString(c.mode) +
-                           " is referred by the umpires");
+    if (c.kind == DecisionKind::PlayerAppeal && !IsPlayerReviewable(c.mode, rules_.drs.reviewRunOutsAndStumpings))
+        return Status::Err(std::string("players cannot review ") + ToString(c.mode) +
+                           " in this competition; it is referred by the umpires");
     if (c.kind == DecisionKind::UmpireReferral && !IsUmpireReferable(c.mode))
         return Status::Err(std::string("umpires do not refer ") + ToString(c.mode));
     if (c.mode == Dismissal::Lbw && !c.evidence.lbw) return Status::Err("an LBW appeal needs ball-tracking evidence");

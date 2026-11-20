@@ -57,6 +57,11 @@ bool IsPlayerReviewable(Dismissal d) {
     return d == Dismissal::Caught || d == Dismissal::Lbw || d == Dismissal::HitWicket;
 }
 
+bool IsPlayerReviewable(Dismissal d, bool runOutsAndStumpingsAllowed) {
+    return IsPlayerReviewable(d) ||
+           (runOutsAndStumpingsAllowed && (d == Dismissal::RunOut || d == Dismissal::Stumped));
+}
+
 bool IsUmpireReferable(Dismissal d) {
     return d == Dismissal::RunOut || d == Dismissal::Stumped || d == Dismissal::Caught ||
            d == Dismissal::HitWicket || d == Dismissal::ObstructingField;
@@ -152,6 +157,16 @@ DrsOutcome JudgeReview(const DecisionCase& c) {
             }
             // Edge inconclusive: not enough to overturn the umpire.
             return Clear(c, c.onFieldOut, Dismissal::Caught, ReasonCode::EdgeInconclusive);
+        case Dismissal::RunOut:
+        case Dismissal::Stumped: {
+            // Reviewed by a player (when the competition allows it). Doubt
+            // goes to the batter, exactly as when the umpires refer it.
+            const bool out = e.batterGrounded == Evidence::No;
+            return Clear(c, out, c.mode,
+                         out                                     ? ReasonCode::ShortOfCrease
+                         : e.batterGrounded == Evidence::Yes ? ReasonCode::MadeGround
+                                                             : ReasonCode::BenefitOfDoubt);
+        }
         case Dismissal::HitWicket: {
             if (e.wicketBrokenByBatter == Evidence::Inconclusive)
                 return Clear(c, c.onFieldOut, Dismissal::HitWicket, ReasonCode::EdgeInconclusive);

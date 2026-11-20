@@ -639,3 +639,115 @@ TEST(drsc_scaled_rules_for_shorter_innings) {
     CHECK_EQ(five.maxOversPerBowler, 1);
     CHECK(five.phases[0].lastOver >= 1);
 }
+
+// ---------------------------------------------------------------- run-out / stumping reviews
+
+namespace {
+DecisionCase RunOutAppeal(bool onFieldOut, Evidence grounded, int runsCompleted = 0) {
+    DecisionCase c;
+    c.kind = DecisionKind::PlayerAppeal;
+    c.mode = Dismissal::RunOut;
+    c.onFieldOut = onFieldOut;
+    c.ifOut.dismissal = Dismissal::RunOut;
+    c.ifOut.runs = runsCompleted;
+    c.ifNotOut.runs = runsCompleted;
+    c.evidence.batterGrounded = grounded;
+    return c;
+}
+}  // namespace
+
+TEST(drsc_run_out_review_allowed_by_icc_rules) {
+    CHECK(DrsRules::Icc().reviewRunOutsAndStumpings);
+    CHECK(!DrsRules::NoPlayerReviews().reviewRunOutsAndStumpings);
+    {
+        Game g;  // given out on the field, batter actually home: overturned
+        DecisionRecord d;
+        CHECK_OK(g.m.Appeal(RunOutAppeal(true, Evidence::Yes, 1)));
+        CHECK_EQ(g.m.ReviewEntitledSide(), 0);
+        CHECK_OK(g.m.ReviewDecision(0, &d));
+        CHECK(d.result.outcome == ReviewOutcome::Overturned && !d.result.finalOut);
+        CHECK(d.result.code == ReasonCode::MadeGround);
+        CHECK_EQ(g.I().Wickets(), 0);
+        CHECK_EQ(g.I().Total(), 1);  // the run completed before the wicket was broken counts
+        CHECK_EQ(g.m.ReviewsRemaining(0), 2);
+    }
+    {
+        Game g;  // inconclusive: benefit of the doubt to the batter
+        DecisionRecord d;
+        CHECK_OK(g.m.Appeal(RunOutAppeal(true, Evidence::Inconclusive)));
+        CHECK_OK(g.m.ReviewDecision(0, &d));
+        CHECK(!d.result.finalOut && d.result.code == ReasonCode::BenefitOfDoubt);
+    }
+    {
+        Game g;  // given not out, fielders review, batter short: out
+        DecisionRecord d;
+        CHECK_OK(g.m.Appeal(RunOutAppeal(false, Evidence::No)));
+        CHECK_EQ(g.m.ReviewEntitledSide(), 1);
+        CHECK_OK(g.m.ReviewDecision(1, &d));
+        CHECK(d.result.finalOut && d.result.finalMode == Dismissal::RunOut);
+        CHECK_EQ(g.I().Wickets(), 1);
+        CHECK_EQ(g.I().Bowler(10).wickets, 0);
+    }
+    {
+        Game g;  // given out, correctly: review lost
+        DecisionRecord d;
+        CHECK_OK(g.m.Appeal(RunOutAppeal(true, Evidence::No)));
+        CHECK_OK(g.m.ReviewDecision(0, &d));
+        CHECK(d.result.outcome == ReviewOutcome::Upheld && d.result.reviewLost);
+        CHECK_EQ(g.m.ReviewsRemaining(0), 1);
+    }
+}
+
+TEST(drsc_stumping_review_off_a_wide) {
+    Game g;
+    DecisionCase c;
+    c.kind = DecisionKind::PlayerAppeal;
+    c.mode = Dismissal::Stumped;
+    c.onFieldOut = true;
+    c.ifOut.extra = ExtraType::Wide;
+    c.ifOut.dismissal = Dismissal::Stumped;
+    c.ifNotOut.extra = ExtraType::Wide;
+    c.ifNotOut.runs = 1;  // they ran one after the appeal: dead ball once given out
+    c.evidence.batterGrounded = Evidence::Yes;
+    DecisionRecord d;
+    CHECK_OK(g.m.Appeal(c));
+    CHECK_OK(g.m.ReviewDecision(0, &d));
+    CHECK(!d.result.finalOut);
+    CHECK_EQ(g.I().GetExtras().wides, 1);  // wide penalty only
+    CHECK_EQ(g.I().Total(), 1);
+}
+
+TEST(drsc_run_out_reviews_switched_off_by_competition) {
+    DrsRules d;
+    CHECK(DrsRules::FromName("custom:2:15:norunouts", &d));
+    CHECK(!d.reviewRunOutsAndStumpings);
+    CHECK(DrsRules::FromName("custom:2:15", &d));
+    CHECK(d.reviewRunOutsAndStumpings);
+    Game g(WithDrs(DrsRules::Custom(2, 15)));
+    MatchRules off = MatchRules::T20();
+    off.drs.reviewRunOutsAndStumpings = false;
+    Game h(off);
+    CHECK_ERR(h.m.Appeal(RunOutAppeal(true, Evidence::Yes)));
+    CHECK(!h.m.HasPendingDecision());
+    CHECK(IsPlayerReviewable(Dismissal::RunOut, true));
+    CHECK(!IsPlayerReviewable(Dismissal::RunOut, false));
+    CHECK(!IsPlayerReviewable(Dismissal::Bowled, true));
+}
+
+TEST(drsc_sim_produces_reviewable_run_outs) {
+    int playerRunOutAppeals = 0;
+    for (uint64_t seed = 60; seed < 80 && playerRunOutAppeals == 0; ++seed) {
+        MatchSession s(MatchRules::T20(), TwoTeams(), seed);
+        s.RunAi();
+        QuickSim sim(seed);
+        while (s.WaitingFor().what == "delivery") {
+            Delivery d = sim.Next(s.GetMatch());
+            auto c = sim.MakeCase(s.GetMatch(), d);
+            if (!c || !s.ResolveAppeal(*c)) CHECK_OK(s.ResolveDelivery(d));
+        }
+        for (const auto& dec : s.GetMatch().Decisions())
+            playerRunOutAppeals += dec.kind == DecisionKind::PlayerAppeal &&
+                                   (dec.appealedFor == Dismissal::RunOut || dec.appealedFor == Dismissal::Stumped);
+    }
+    CHECK(playerRunOutAppeals > 0);
+}

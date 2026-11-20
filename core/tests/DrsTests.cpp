@@ -391,9 +391,16 @@ TEST(drs_invalid_cases_rejected) {
     c = LbwCase(true, Lbw(WicketsZone::Hitting));
     c.evidence.lbw.reset();
     CHECK_ERR(g.m.Appeal(c));  // LBW needs ball tracking
-    c = Referral(Dismissal::RunOut, Evidence::No);
-    c.kind = DecisionKind::PlayerAppeal;
-    CHECK_ERR(g.m.Appeal(c));  // run outs are referred, not reviewed
+    {
+        // Competitions that don't allow run-out reviews (ICC playing
+        // conditions do allow them; see DrsCompleteTests for that case).
+        MatchRules r = MatchRules::T20();
+        r.drs.reviewRunOutsAndStumpings = false;
+        Game h(r);
+        c = Referral(Dismissal::RunOut, Evidence::No);
+        c.kind = DecisionKind::PlayerAppeal;
+        CHECK_ERR(h.m.Appeal(c));  // run outs are referred, not reviewed
+    }
     c = LbwCase(true, Lbw(WicketsZone::Hitting));
     c.kind = DecisionKind::UmpireReferral;
     CHECK_ERR(g.m.Appeal(c));  // umpires don't refer LBW

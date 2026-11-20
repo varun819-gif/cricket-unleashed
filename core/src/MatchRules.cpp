@@ -10,6 +10,7 @@ DrsRules DrsRules::Icc() { return DrsRules{}; }
 DrsRules DrsRules::NoPlayerReviews() {
     DrsRules d;
     d.playerReviews = false;
+    d.reviewRunOutsAndStumpings = false;
     d.reviewsPerInnings = 0;
     d.reviewTimerSeconds = 0;
     return d;
@@ -37,15 +38,17 @@ bool DrsRules::FromName(const std::string& name, DrsRules* out) {
     int reviews = 0, seconds = 0, used = 0;
     if (std::sscanf(name.c_str(), "custom:%d:%d%n", &reviews, &seconds, &used) < 2) return false;
     if (reviews < 0 || reviews > 10 || seconds < 0 || seconds > 120) return false;
-    bool lose = false, calls = false;
+    bool lose = false, calls = false, noRunOuts = false;
     std::string rest = name.substr(static_cast<size_t>(used));
     while (!rest.empty()) {
         if (rest.rfind(":lose", 0) == 0) lose = true, rest = rest.substr(5);
         else if (rest.rfind(":calls", 0) == 0) calls = true, rest = rest.substr(6);
+        else if (rest.rfind(":norunouts", 0) == 0) noRunOuts = true, rest = rest.substr(10);
         else return false;
     }
     *out = Custom(reviews, seconds, !lose);
     out->reviewWidesAndNoBalls = calls;
+    out->reviewRunOutsAndStumpings = !noRunOuts;
     return true;
 }
 

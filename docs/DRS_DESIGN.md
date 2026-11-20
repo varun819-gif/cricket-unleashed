@@ -42,10 +42,12 @@ On every **dismissal** decision the TV umpire also checks for a **front-foot
 no-ball**, when the competition has a third umpire. It cancels any dismissal
 except run out and obstructing the field (Law 21.18).
 
-Approximation: in this game run outs and stumpings are always *referred* by
-the umpires, so players can't review them. That matches normal practice at
-international level, but the ICC playing conditions also let players review
-those decisions if the umpires don't refer them.
+Run outs and stumpings: usually the umpires refer them. If an umpire decides
+one on the field, players may review it when the competition allows
+(`DrsRules::reviewRunOutsAndStumpings`; on in the international preset,
+off with `:norunouts`). Doubt goes to the batter either way. If an OUT is
+overturned, runs completed before the wicket was broken still count on a run
+out. A stumping is a dead ball (wide penalty only).
 
 ## Rulesets (configurable per competition)
 
@@ -59,6 +61,7 @@ those decisions if the umpires don't refer them.
 | `umpiresCallRetainsReview` | umpire's call does not cost a review | true |
 | `reviewTimerSeconds` | time to ask for a review (0 = no timer) | 15 |
 | `reviewWidesAndNoBalls` | players may review wide and height no-ball calls | false |
+| `reviewRunOutsAndStumpings` | players may review run-out / stumping decisions the umpires didn't refer | true |
 
 Presets: `DrsRules::Icc()`, `NoPlayerReviews()` (TV umpire only),
 `NoTechnology()` (on-field umpires decide everything), and

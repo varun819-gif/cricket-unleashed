@@ -142,9 +142,10 @@ struct DrsOutcome {
     std::string reason;                     // ReasonText(code)
 };
 
-// Caught, LBW and hit wicket can be reviewed by the players. (Run outs and
-// stumpings are always referred by the umpires in this game; see DRS_DESIGN.)
+// Caught, LBW and hit wicket can always be reviewed by the players. Run outs
+// and stumpings too when the competition allows it (see the overload below).
 bool IsPlayerReviewable(Dismissal d);
+bool IsPlayerReviewable(Dismissal d, bool runOutsAndStumpingsAllowed);
 // Run out, stumped, caught (clean catch), hit wicket, obstructing the field.
 bool IsUmpireReferable(Dismissal d);
 // Wide and height no-ball calls may be reviewed (if the ruleset allows);
