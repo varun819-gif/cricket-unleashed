@@ -80,3 +80,14 @@ Bugs were planted one at a time in the new code; each was reverted after.
 Ball physics, batting/bowling input, animation, rendering, Android TV
 hardware, network transport, matchmaking, database, mobile controller,
 audio.
+
+## Priority 3 - online multiplayer (2026-11-20)
+
+| Suite | Result |
+|---|---|
+| C++ `cricket_tests` (Debug + sanitizers, Release GCC, Release Clang) | 232/232, 0 warnings |
+| Node `controller_js` | 6/6 |
+| Node `online_js` (real server, slow/cut proxy, server crash) | 3/3 |
+| Browser: phone controller (Pixel 7 emulation) | all checks pass |
+| Browser: two-phone online match (Pixel 7 emulation) | 18/18 |
+| **Two real devices over the internet** | **not done yet** - needs the user's phones |

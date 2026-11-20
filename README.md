@@ -38,6 +38,7 @@ cmake --build build -j
 ./build/cricket_sim --teams                # list the fictional teams
 ./build/cricket_sim t20 --drs no-reviews   # DRS ruleset: icc | no-reviews | no-tech | custom:R:S[:lose][:calls]
 ./build/cricket_sim odi --rain             # random rain delays, non-official rain-rule targets
+./build/cricket_server --port 8080         # online server: open http://localhost:8080/
 ```
 
 ## What works today
@@ -58,6 +59,7 @@ cmake --build build -j
 | Multiplayer core | server-authoritative session: join sides, rejects duplicate and out-of-turn commands, review timer, break pauses, weather and penalty actions, ordered event log so a reconnecting client can catch up, crash recovery from the session journal |
 | Teams | 10 fictional international sides (no licensed names or likenesses) |
 | **Phone controller** | QR pairing over home Wi-Fi, secret never sent over the network, signed + numbered messages, captain / player / spectator controls (toss, captaincy, review, bowling, batting, fielding), automatic reconnection with the game waiting for you, TV page with QR codes. Ball outcomes are **simulated placeholders** until Unreal physics. See [docs/MOBILE_CONTROLLER.md](docs/MOBILE_CONTROLLER.md) and [docs/CONNECT_YOUR_PHONE.md](docs/CONNECT_YOUR_PHONE.md) |
+| **Online multiplayer** (preview) | self-hosted `cricket_server` (₹0): guest players (no password), private rooms with 6-letter codes, quick + ranked matchmaking, Elo ratings, server-decided scores, reconnection (match waits 2 min, then ranked forfeit / casual AI takeover), anti-cheat timing check, duplicate-message protection, crash recovery, history, stats, leaderboards. ⚠️ Tested on one machine only - **the two-device internet test is still pending**. See [docs/ONLINE_MULTIPLAYER.md](docs/ONLINE_MULTIPLAYER.md) and [docs/ONLINE_SERVER_SETUP.md](docs/ONLINE_SERVER_SETUP.md) |
 
 ## Repository layout
 
@@ -85,6 +87,7 @@ docs/                   design documents
 - [Rain rule (non-official)](docs/RAIN_RULE.md)
 - [Save and resume](docs/SAVE_AND_RESUME.md)
 - [Mobile controller](docs/MOBILE_CONTROLLER.md) · [Connect your phone](docs/CONNECT_YOUR_PHONE.md)
+- [Online multiplayer](docs/ONLINE_MULTIPLAYER.md) · [Run the server for ₹0 + internet test](docs/ONLINE_SERVER_SETUP.md)
 - [Missing details and assumptions](docs/MISSING_DETAILS.md)
 - [Commentary design](docs/COMMENTARY_DESIGN.md)
 - [Leaderboard design](docs/LEADERBOARD_DESIGN.md)

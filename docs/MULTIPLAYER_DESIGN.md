@@ -1,5 +1,9 @@
 # Multiplayer Design
 
+> What is built today (Priority 3 online server, rooms, matchmaking, ratings,
+> reconnection, crash recovery) is described in [ONLINE_MULTIPLAYER.md](ONLINE_MULTIPLAYER.md).
+> This page is the longer-term design (Unreal netcode etc.).
+
 ## Golden rule
 
 **The server decides.** A phone, TV or PC never reports a score, a wicket or a

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0] - 2026-11-20 - Priority 3: Online multiplayer backend (preview)
+
+### Added
+- `online/` library: `Store` (guest accounts with hashed tokens, match
+  records, Elo ratings with win-trading guard, stats, leaderboards;
+  checksummed JSON-lines files), `OnlineServer` (message numbers, rooms with
+  invite codes, casual + ranked matchmaking, live matches through
+  `MatchHost`, reconnection grace, ranked forfeit / casual AI takeover,
+  idle-captain rule, concede, server-side timing check, crash recovery).
+- `cricket_server` tool; online web page `online/web/` reusing the phone
+  controller screens.
+- `MatchSession::ReleaseSide` (AI takes over; save format v3),
+  `MatchHost` recovery constructor and `HandToAi`, `ControlChannel` /
+  `ConnectionSink` interfaces, configurable `LocalServer` routes.
+- Tests: 15 C++ (232 total), 3 Node multi-process (slow / cut connections,
+  server crash), two-browser Playwright test. `cricket_tests <filter>`.
+- Docs: ONLINE_MULTIPLAYER.md, ONLINE_SERVER_SETUP.md.
+
+### Not yet
+- Two separate devices over the internet: **not tested yet** (needs the
+  user's real phones; instructions in ONLINE_SERVER_SETUP.md).
+
 ## [0.8.0] - 2026-11-20 - Priority 2: Mobile controller
 
 ### Added

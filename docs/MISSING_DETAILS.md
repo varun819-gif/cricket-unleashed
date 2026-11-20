@@ -46,3 +46,7 @@ assumption is easy to change later.
 | 20 | **Cricket Creator Studio** (record matches, publish highlights to YouTube) | Recording format, highlight rules, YouTube account/API use (needs Google API project + OAuth consent; free tier, but must be approved), content ownership and music licensing |
 | 21 | Licensed teams / players | Which licences, if any, will be pursued (currently fictional teams only) |
 | 22 | Monetisation | Not specified. Ranked play must not depend on purchases (spec section 19) |
+| 23 | **India vs Pakistan naming online** | Online uses fictional stand-ins (Ganga Royals, Indus Falcons). Need a decision on using country names / flags, and any licence |
+| 24 | Account recovery | Should guests be able to link Google/email later to keep their account? |
+| 25 | Online moderation | Rules for names, reporting players, bans, age rating |
+| 26 | Server hosting after development | When to move to paid cloud, budget, which provider/region (Mumbai?) |

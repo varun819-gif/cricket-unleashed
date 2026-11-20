@@ -69,6 +69,27 @@ this milestone have been removed (see CHANGELOG.md).
 23. The phone app is English-only for now. Screen Wake Lock isn't available
     on plain `http://` local pages, so phones may dim during long waits.
 
+## Online multiplayer
+
+24. **Not yet tested over the internet between two separate devices.** All
+    tests run on one machine (real processes and sockets, a slow/cutting
+    proxy, emulated phones). Online is a preview until the test in
+    docs/ONLINE_SERVER_SETUP.md passes.
+25. Guest accounts live in one browser. Clearing browser data or losing
+    the phone loses the account (no recovery, no linking to email/Google
+    yet).
+26. No report / mute / ban tools, no detection of one person using many
+    guest accounts, no chat (by design for now).
+27. A TV/PC game cannot yet join online with local phones as controllers;
+    online play is phone/PC browser to server. Planned with the Unreal
+    client.
+28. Test matches are not offered online (multi-day). T20, ODI and 1-50
+    over matches are.
+29. One server process, single-threaded, data in files: fine for
+    development; the PostgreSQL/Redis path is documented but not built.
+30. Ball outcomes online are the same **simulated placeholders** as the
+    phone controller.
+
 ## Operational notes
 
 16. The DRS review timer and break timers need the server to call
