@@ -1,0 +1,272 @@
+#include "cricket/MatchSession.h"
+
+namespace cricket {
+
+namespace {
+std::string Face(CoinFace f) { return f == CoinFace::Heads ? "heads" : "tails"; }
+
+std::string BallText(const Match& m, const DeliveryRecord& r) {
+    const Innings& inn = m.AllInnings()[r.inningsIndex];
+    const Team& bat = m.GetTeam(inn.BattingSide());
+    const Team& fld = m.GetTeam(1 - inn.BattingSide());
+    std::string s = std::to_string(r.over) + "." + std::to_string(r.ballInOver) + " " + fld.xi[r.bowler].name +
+                    " to " + bat.xi[r.striker].name + ": ";
+    const Delivery& d = r.delivery;
+    if (d.extra != ExtraType::None) s += std::string(ToString(d.extra)) + " ";
+    if (d.dismissal != Dismissal::None) s += std::string("OUT ") + ToString(d.dismissal) + " (" + bat.xi[r.dismissedBatter].name + ") ";
+    if (d.boundary) s += d.runs == 6 ? "SIX" : "FOUR";
+    else s += std::to_string(r.runsToTeam) + (r.runsToTeam == 1 ? " run" : " runs");
+    s += "  [" + std::to_string(r.totalAfter) + "/" + std::to_string(r.wicketsAfter) + "]";
+    return s;
+}
+}  // namespace
+
+MatchSession::MatchSession(MatchRules rules, std::array<Team, 2> teams, uint64_t serverSeed)
+    : rules_(std::move(rules)), teams_(std::move(teams)), toss_(serverSeed), ai_(serverSeed ^ 0x9e3779b97f4a7c15ULL) {
+    for (const auto& t : teams_) {
+        Status s = Match::ValidateTeam(t, rules_.squadSize);
+        if (!s) throw std::invalid_argument(s.error);
+    }
+    fields_[0] = fields_[1] = FieldSetup::FromPreset(FieldPreset::Powerplay);
+}
+
+bool MatchSession::IsHuman(int side) const { return side >= 0 && side < 2 && !humans_[side].empty(); }
+
+int MatchSession::SideOf(const std::string& player) const {
+    for (int s = 0; s < 2; ++s)
+        if (!humans_[s].empty() && humans_[s] == player) return s;
+    return -1;
+}
+
+Status MatchSession::Join(const std::string& player, int side) {
+    if (player.empty()) return Status::Err("player id required");
+    if (side != 0 && side != 1) return Status::Err("side must be 0 or 1");
+    if (SideOf(player) >= 0) return Status::Err("player already joined");
+    if (!humans_[side].empty()) return Status::Err("that side is already taken");
+    if (toss_.Phase() != TossPhase::AwaitingCall) return Status::Err("match already started");
+    humans_[side] = player;
+    Log("join", player + " controls " + teams_[side].name);
+    return Status::Ok();
+}
+
+void MatchSession::Log(std::string kind, std::string text, std::optional<DeliveryRecord> ball) {
+    SessionEvent e;
+    e.id = events_.size() + 1;
+    e.kind = std::move(kind);
+    e.text = std::move(text);
+    e.ball = std::move(ball);
+    events_.push_back(std::move(e));
+}
+
+std::vector<SessionEvent> MatchSession::EventsSince(uint64_t lastSeenId) const {
+    if (lastSeenId >= events_.size()) return {};
+    return {events_.begin() + static_cast<long>(lastSeenId), events_.end()};
+}
+
+Pending MatchSession::WaitingFor() const {
+    if (toss_.Phase() == TossPhase::AwaitingCall) return {"toss-call", toss_.CallingSide()};
+    if (toss_.Phase() == TossPhase::AwaitingDecision) return {"toss-decision", toss_.Winner()};
+    if (!match_) return {"none", -1};
+    const Match& m = *match_;
+    if (m.Phase() == MatchPhase::Complete) return {"none", -1};
+    if (m.Phase() == MatchPhase::AwaitingFollowOnDecision) return {"follow-on", m.AllInnings()[0].BattingSide()};
+    switch (m.Current().State()) {
+        case InningsState::AwaitingOpeners: return {"openers", m.BattingSide()};
+        case InningsState::AwaitingBatter: return {"batter", m.BattingSide()};
+        case InningsState::AwaitingBowler: return {"bowler", m.FieldingSide()};
+        case InningsState::InPlay: return {"delivery", -1};
+        case InningsState::Complete: break;
+    }
+    return {"none", -1};
+}
+
+void MatchSession::StartMatch() {
+    match_ = std::make_unique<Match>(rules_, teams_, toss_.BattingFirst());
+    AfterMatchChange();
+}
+
+void MatchSession::AfterMatchChange() {
+    if (!match_) return;
+    const auto& all = match_->AllInnings();
+    while (lastInningsSeen_ < all.size()) {
+        const Innings& inn = all[lastInningsSeen_];
+        std::string t = "Innings " + std::to_string(lastInningsSeen_ + 1) + ": " + teams_[inn.BattingSide()].name +
+                        " to bat";
+        if (inn.Target()) t += ", target " + std::to_string(*inn.Target());
+        Log("innings", t);
+        lastInningsSeen_++;
+    }
+    if (match_->Phase() == MatchPhase::AwaitingFollowOnDecision)
+        Log("follow-on", teams_[all[0].BattingSide()].name + " may enforce the follow-on");
+    if (match_->Phase() == MatchPhase::Complete && !resultLogged_) {
+        resultLogged_ = true;
+        Log("result", match_->Result().summary);
+    }
+}
+
+void MatchSession::EnsureLegalField() {
+    if (!match_ || match_->Phase() != MatchPhase::InProgress) return;
+    const int side = match_->FieldingSide();
+    FieldContext ctx{&match_->Rules(), match_->Current().CurrentOverNumber()};
+    if (ValidateField(fields_[side], ctx).status) return;
+    int bowler = match_->Current().CurrentBowler();
+    BowlingKind kind = bowler >= 0 ? teams_[side].xi[bowler].bowls : BowlingKind::Pace;
+    fields_[side] = ai_.ChooseLegalField(*match_, kind);
+    Log("field", teams_[side].name + " field adjusted to meet fielding restrictions");
+}
+
+Status MatchSession::Submit(const Command& c) {
+    const int side = SideOf(c.player);
+    if (side < 0) return Status::Err("unknown player");
+    auto& last = lastSeq_[c.player];
+    if (c.seq <= last) return Status::Err("duplicate or out-of-order command");
+    last = c.seq;
+    Status s = Apply(side, c);
+    if (s) RunAi();
+    return s;
+}
+
+Status MatchSession::Apply(int side, const Command& c) {
+    const Pending p = WaitingFor();
+    auto mustBe = [&](const char* what, int who) -> Status {
+        if (p.what != what) return Status::Err(std::string("not expecting ") + what + " now (waiting for " + p.what + ")");
+        if (who != side) return Status::Err("it is not your decision");
+        return Status::Ok();
+    };
+    Status s;
+    switch (c.type) {
+        case CommandType::TossCall: {
+            if (!(s = mustBe("toss-call", p.side))) return s;
+            CoinFace call = c.a == 0 ? CoinFace::Heads : CoinFace::Tails;
+            if (!(s = toss_.Call(side, call))) return s;
+            Log("toss", teams_[side].name + " call " + Face(call) + ". It's " + Face(toss_.Landed()) + "! " +
+                            teams_[toss_.Winner()].name + " win the toss.");
+            return s;
+        }
+        case CommandType::TossDecision: {
+            if (!(s = mustBe("toss-decision", p.side))) return s;
+            TossChoice ch = c.a == 0 ? TossChoice::Bat : TossChoice::Bowl;
+            if (!(s = toss_.Decide(side, ch))) return s;
+            Log("decision", teams_[side].name + " choose to " + (ch == TossChoice::Bat ? "bat" : "bowl") + " first");
+            StartMatch();
+            return s;
+        }
+        case CommandType::SetOpeners:
+            if (!(s = mustBe("openers", p.side))) return s;
+            return match_->SetOpeners(c.a, c.b);
+        case CommandType::SetNextBatter:
+            if (!(s = mustBe("batter", p.side))) return s;
+            return match_->SetNextBatter(c.a);
+        case CommandType::SetBowler:
+            if (!(s = mustBe("bowler", p.side))) return s;
+            if (!(s = match_->SetBowler(c.a))) return s;
+            EnsureLegalField();
+            return s;
+        case CommandType::SetFieldPreset:
+        case CommandType::SetField: {
+            if (!match_ || match_->Phase() != MatchPhase::InProgress) return Status::Err("no innings in progress");
+            if (side != match_->FieldingSide()) return Status::Err("only the fielding captain sets the field");
+            if (c.type == CommandType::SetFieldPreset &&
+                (c.a < 0 || c.a >= static_cast<int>(AllPresets().size())))
+                return Status::Err("unknown field preset");
+            FieldSetup f = c.type == CommandType::SetFieldPreset
+                               ? FieldSetup::FromPreset(AllPresets()[c.a])
+                               : c.field;
+            FieldContext ctx{&match_->Rules(), match_->Current().CurrentOverNumber()};
+            FieldCheck chk = ValidateField(f, ctx);
+            if (!chk.status) return chk.status;
+            fields_[side] = f;
+            Log("field", teams_[side].name + " change the field");
+            return s;
+        }
+        case CommandType::Declare:
+            if (!match_ || match_->Phase() != MatchPhase::InProgress) return Status::Err("no innings in progress");
+            if (side != match_->BattingSide()) return Status::Err("only the batting captain can declare");
+        {
+            const std::string score = match_->Current().ScoreString();
+            if (!(s = match_->Declare())) return s;
+            Log("declare", teams_[side].name + " declare at " + score);
+        }
+            AfterMatchChange();
+            return s;
+        case CommandType::FollowOn:
+            if (!(s = mustBe("follow-on", p.side))) return s;
+            if (!(s = match_->DecideFollowOn(c.a != 0))) return s;
+            Log("follow-on", c.a ? "Follow-on enforced" : "Follow-on not enforced");
+            AfterMatchChange();
+            return s;
+    }
+    return Status::Err("unknown command");
+}
+
+Status MatchSession::ResolveDelivery(const Delivery& d) {
+    if (WaitingFor().what != "delivery") return Status::Err("not ready for a delivery");
+    EnsureLegalField();
+    DeliveryRecord rec;
+    Status s = match_->Bowl(d, &rec);
+    if (!s) return s;
+    Log("ball", BallText(*match_, rec), rec);
+    if (rec.inningsCompleted) Log("innings-end", match_->AllInnings()[rec.inningsIndex].ScoreString());
+    AfterMatchChange();
+    RunAi();
+    return s;
+}
+
+void MatchSession::RunAi() {
+    for (int guard = 0; guard < 64; ++guard) {
+        Pending p = WaitingFor();
+        if (p.what == "delivery") {
+            // AI batting captain may declare (Test only).
+            if (match_->Rules().oversPerInnings == 0 && !IsHuman(match_->BattingSide()) &&
+                ai_.ShouldDeclare(*match_)) {
+                const int side = match_->BattingSide();
+                std::string score = match_->Current().ScoreString();
+                if (match_->Declare()) {
+                    Log("declare", teams_[side].name + " declare at " + score);
+                    AfterMatchChange();
+                    continue;
+                }
+            }
+            return;
+        }
+        if (p.side < 0 || IsHuman(p.side)) return;
+        Status s;
+        if (p.what == "toss-call") {
+            CoinFace f = (ai_.ChooseAtToss(rules_) == TossChoice::Bat) ? CoinFace::Heads : CoinFace::Tails;
+            s = toss_.Call(p.side, f);
+            if (s) Log("toss", teams_[p.side].name + " call " + Face(f) + ". It's " + Face(toss_.Landed()) + "! " +
+                                   teams_[toss_.Winner()].name + " win the toss.");
+        } else if (p.what == "toss-decision") {
+            TossChoice ch = ai_.ChooseAtToss(rules_);
+            s = toss_.Decide(p.side, ch);
+            if (s) {
+                Log("decision", teams_[p.side].name + " choose to " + (ch == TossChoice::Bat ? "bat" : "bowl") + " first");
+                StartMatch();
+            }
+        } else if (p.what == "openers") {
+            auto [a, b] = ai_.ChooseOpeners(*match_);
+            s = match_->SetOpeners(a, b);
+        } else if (p.what == "batter") {
+            s = match_->SetNextBatter(ai_.ChooseNextBatter(*match_));
+        } else if (p.what == "bowler") {
+            int b = ai_.ChooseBowler(*match_);
+            s = b >= 0 ? match_->SetBowler(b) : Status::Err("AI found no legal bowler");
+            if (s) fields_[p.side] = ai_.ChooseLegalField(*match_, teams_[p.side].xi[b].bowls);
+        } else if (p.what == "follow-on") {
+            bool enforce = ai_.ShouldEnforceFollowOn(*match_);
+            s = match_->DecideFollowOn(enforce);
+            if (s) {
+                Log("follow-on", enforce ? "Follow-on enforced" : "Follow-on not enforced");
+                AfterMatchChange();
+            }
+        } else {
+            return;
+        }
+        if (!s) {
+            Log("error", "AI could not act: " + s.error);
+            return;
+        }
+    }
+}
+
+}  // namespace cricket

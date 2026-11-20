@@ -1,0 +1,8 @@
+build/
+*.o
+.vs/
+.vscode/
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
