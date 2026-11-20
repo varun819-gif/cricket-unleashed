@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+
+#include <unistd.h>
 
 namespace cricket::online {
 
@@ -147,19 +150,36 @@ Status Store::Open(const std::string& dir) {
         matches_.push_back(*m);
         return true;
     });
-    // Stats are derived from the match history (one source of truth).
-    for (auto& [id, a] : accounts_) a.stats = {};
-    for (const auto& m : matches_) ApplyMatch(m);
+    // Stats AND ratings are derived from the match history (one source of
+    // truth): an edited or stale rating in accounts.jsonl has no effect.
+    for (auto& [id, a] : accounts_) {
+        a.stats = {};
+        a.rating = 1200;
+        a.ratedGames = 0;
+    }
+    for (const auto& m : matches_) {
+        ApplyMatch(m);
+        if (m.mode != "ranked" || m.outcome == "no-result") continue;
+        auto x = accounts_.find(m.sides[0].account), y = accounts_.find(m.sides[1].account);
+        if (x == accounts_.end() || y == accounts_.end()) continue;
+        x->second.rating += m.ratingDelta[0];
+        y->second.rating += m.ratingDelta[1];
+        x->second.ratedGames++;
+        y->second.ratedGames++;
+    }
     return Status::Ok();
 }
 
 Status Store::Append(const std::string& file, const Json& j) {
     if (dir_.empty()) return Status::Ok();
-    std::ofstream f(dir_ + "/" + file, std::ios::app);
     const std::string body = j.Dump();
-    f << body << "\t#" << Crc(body) << "\n";
-    f.flush();
-    return f ? Status::Ok() : Status::Err("write failed: " + file);
+    const std::string line = body + "\t#" + Crc(body) + "\n";
+    std::FILE* f = std::fopen((dir_ + "/" + file).c_str(), "ab");
+    if (!f) return Status::Err("cannot open " + file);
+    bool ok = std::fwrite(line.data(), 1, line.size(), f) == line.size() && std::fflush(f) == 0;
+    ok = ::fsync(::fileno(f)) == 0 && ok;  // on disk before we tell anyone (power cuts)
+    ok = std::fclose(f) == 0 && ok;
+    return ok ? Status::Ok() : Status::Err("write failed: " + file);
 }
 
 std::pair<Account, std::string> Store::CreateGuest(const std::string& name, const std::string& country, int64_t now,
@@ -218,6 +238,7 @@ void Store::ApplyMatch(const MatchRecord& m) {
         PlayerStats& st = it->second.stats;
         const SideResult& mine = m.sides[s];
         st.matches++;
+        if (m.outcome == "win" || m.outcome == "tie") st.completed++;
         if (m.mode == "ranked") st.rankedMatches++;
         if (m.winner == s) {
             st.wins++;
@@ -260,6 +281,16 @@ MatchRecord Store::RecordMatch(MatchRecord rec) {
             const double sa = rec.winner == 0 ? 1.0 : rec.winner == 1 ? 0.0 : 0.5;
             rec.ratingDelta[0] = EloDelta(a->rating, b->rating, sa, a->ratedGames);
             rec.ratingDelta[1] = EloDelta(b->rating, a->rating, 1.0 - sa, b->ratedGames);
+            const bool early = rec.outcome == "forfeit" &&
+                               rec.sides[0].legalBalls + rec.sides[1].legalBalls < kMinBallsForRatedWin;
+            for (int s = 0; s < 2; ++s) {
+                const Account* me = s == 0 ? a : b;
+                const Account* opp = s == 0 ? b : a;
+                if (rec.ratingDelta[s] <= 0) continue;
+                if (early) rec.ratingDelta[s] = 0;
+                else if (opp->ratedGames < kProvisionalGames && me->ratedGames >= kProvisionalGames)
+                    rec.ratingDelta[s] /= 2;
+            }
             a->rating += rec.ratingDelta[0];
             b->rating += rec.ratingDelta[1];
         }
@@ -315,6 +346,9 @@ Json Store::Leaderboard(const std::string& board, const std::string& period, con
     for (const auto& m : matches_) {
         if (m.endedMs < since) continue;
         if (mode != "all" && m.mode != mode) continue;
+        // Only matches played to a real result count on the stat boards
+        // (forfeits and abandoned games can be arranged, so they don't).
+        if (board != "rating" && m.outcome != "win" && m.outcome != "tie") continue;
         for (int s = 0; s < 2; ++s) {
             const SideResult& r = m.sides[s];
             if (r.account.empty() || !accounts_.count(r.account)) continue;

@@ -22,6 +22,7 @@
 #pragma once
 
 #include <array>
+#include <cstdio>
 #include <deque>
 #include <map>
 #include <memory>
@@ -54,6 +55,9 @@ struct OnlineConfig {
     int maxGuestsPerMinute = 30;          // across the whole server
     size_t maxRooms = 1000;
     size_t maxMatches = 200;
+    int rankedUnlockMatches = 3;          // full matches needed before ranked (slows fake-account farming)
+    int maxWrongRoomCodesPerMinute = 10;  // stops guessing room codes
+    int64_t leaderboardCacheMs = 15000;
     ctl::HostConfig host;                 // ball timings (serverTimingCheck is forced on)
 };
 
@@ -84,6 +88,10 @@ public:
     uint64_t lastInputs = 0;  // last match event seen (idle detection)
     std::unique_ptr<ctl::MatchHost> host;
     SessionJournal journal;
+    std::FILE* actsLog = nullptr;         // accepted action ids (survive a crash)
+    ~OnlineMatch() {
+        if (actsLog) std::fclose(actsLog);
+    }
 
 private:
     friend class OnlineServer;
@@ -144,6 +152,7 @@ private:
     };
     struct Presence {
         ConnId conn = 0;
+        std::deque<int64_t> wrongCodes;
         std::string room;
         std::string match;
     };
@@ -191,6 +200,7 @@ private:
     std::map<std::string, std::unique_ptr<OnlineMatch>> matches_;
     std::deque<int64_t> guestTimes_;
     uint64_t matchCounter_ = 0;
+    std::map<std::string, std::pair<int64_t, Json>> boardCache_;  // request -> (made at, board)
     int64_t now_ = 0;
 };
 

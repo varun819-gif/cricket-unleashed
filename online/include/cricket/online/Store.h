@@ -27,6 +27,7 @@ using ctl::Json;
 
 struct PlayerStats {
     int matches = 0, wins = 0, losses = 0, ties = 0, noResults = 0;
+    int completed = 0;                   // played to a real result (not forfeit / no result)
     int rankedMatches = 0, rankedWins = 0;
     int runs = 0, wicketsTaken = 0, fours = 0, sixes = 0;
     int highestIndividual = 0;           // best score by a batter on the player's team
@@ -70,6 +71,9 @@ struct MatchRecord {
     std::string saveFile; // replayable session save (evidence for disputes)
 };
 
+constexpr int kMinBallsForRatedWin = 12;
+constexpr int kProvisionalGames = 5;
+
 class Store {
 public:
     // Empty dir = in memory only (tests).
@@ -85,8 +89,15 @@ public:
 
     // Records a finished match: updates both players' stats and (ranked)
     // ratings. Ratings: Elo, K = 40 for a player's first 10 ranked games
-    // then 20. A pair meeting more than 3 times in ranked within 24 hours
-    // gets no rating change (win-trading guard). Returns the record as stored.
+    // then 20. Anti-manipulation rules (see docs/ONLINE_MULTIPLAYER.md):
+    //  * a pair meeting more than 3 times in ranked within 24 hours gets no
+    //    rating change (win-trading guard);
+    //  * a forfeit before kMinBallsForRatedWin legal balls: the leaver still
+    //    loses rating, the winner gains nothing (no farming by instant concedes);
+    //  * a gain against a provisional opponent (fewer than 5 ranked games)
+    //    is halved for an established player (no farming with new accounts).
+    // Ratings are always rebuilt from the match records when loading, so the
+    // match history is the single source of truth. Returns the stored record.
     MatchRecord RecordMatch(MatchRecord rec);
 
     std::vector<MatchRecord> History(const std::string& account, size_t limit) const;
@@ -95,6 +106,7 @@ public:
     // board: rating | wins | winpct | runs | wickets | sixes | fours | highscore | matches
     // period: all | week | month (by match end time); mode: all | ranked | casual
     // country: "" = global. Win % needs at least 5 matches in the period.
+    // Stat boards count only matches played to a result (no forfeits).
     Json Leaderboard(const std::string& board, const std::string& period, const std::string& mode,
                      const std::string& country, int64_t nowMs, size_t limit) const;
     Json StatsJson(const std::string& account) const;

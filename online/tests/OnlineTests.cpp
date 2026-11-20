@@ -46,6 +46,7 @@ struct World {
     static OnlineConfig Cfg() {
         OnlineConfig c;
         c.host.bowlWindowMs = 3000;
+        c.rankedUnlockMatches = 0;  // tests that need it turn it on
         return c;
     }
     void Pump();
@@ -624,7 +625,7 @@ TEST(online_ranked_disconnect_is_a_forfeit) {
     b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=5").Set("team", "Indus Falcons"));
     w.Step();
     Bot ba(a, 1), bb(b, 2);
-    for (int i = 0; i < 40; ++i) {
+    for (int i = 0; i < 4; ++i) {  // drops out right after the toss
         ba.Play();
         bb.Play();
         w.Step(50);
@@ -638,8 +639,11 @@ TEST(online_ranked_disconnect_is_a_forfeit) {
     CHECK(e.has_value());
     CHECK_EQ(e->Get("record")->Str("outcome"), std::string("forfeit"));
     CHECK_EQ(e->Get("record")->Int("winner"), 0);
-    CHECK_EQ(e->Int("delta"), 20);
+    // Left within the first 12 balls: the leaver loses rating, but the
+    // winner gains nothing (otherwise fake accounts could feed points).
+    CHECK_EQ(e->Int("delta"), 0);
     CHECK_EQ(w.store.Find(b.id)->rating, 1180);
+    CHECK_EQ(w.store.Find(a.id)->rating, 1200);
     // B logs back in later: no match any more.
     b.inbox.clear();
     CHECK(b.Login());
@@ -778,4 +782,116 @@ TEST(online_server_restart_recovers_live_matches) {
     CHECK_OK(s2.Open(dir));
     CHECK(s2.FindMatch(matchId) != nullptr);
     CHECK_EQ(s2.Find(aId)->stats.matches, 1);
+}
+
+// ---------------------------------------------------------------- anti-manipulation
+
+TEST(online_ratings_resist_farming_and_tampering) {
+    const std::string dir = TempDir("farm");
+    Store s;
+    CHECK_OK(s.Open(dir));
+    auto rnd = Counter(31);
+    const std::string main = s.CreateGuest("Main", "IN", 0, rnd).first.id;
+    int n = 0;
+    auto rec = [&](const std::string& x, const std::string& y, const std::string& outcome, int balls) {
+        MatchRecord m;
+        m.id = "f" + std::to_string(++n);
+        m.mode = "ranked";
+        m.endedMs = n;
+        m.sides[0].account = x;
+        m.sides[1].account = y;
+        m.sides[0].legalBalls = balls;
+        m.winner = 0;
+        m.outcome = outcome;
+        return s.RecordMatch(m);
+    };
+    // Instant concede by a fresh account: the winner gains nothing.
+    const std::string alt1 = s.CreateGuest("Alt", "", 0, rnd).first.id;
+    auto r = rec(main, alt1, "forfeit", 3);
+    CHECK_EQ(r.ratingDelta[0], 0);
+    CHECK(r.ratingDelta[1] < 0);
+    // A forfeit after 12+ balls counts normally.
+    const std::string alt2 = s.CreateGuest("Alt", "", 0, rnd).first.id;
+    CHECK(rec(main, alt2, "forfeit", 12).ratingDelta[0] > 0);
+    // Once established (5 ranked games), wins over provisional accounts are halved.
+    for (int i = 0; i < 3; ++i) rec(main, s.CreateGuest("Alt", "", 0, rnd).first.id, "win", 30);
+    CHECK_EQ(s.Find(main)->ratedGames, 5);
+    const std::string fresh = s.CreateGuest("Alt", "", 0, rnd).first.id;
+    const int full = Store::EloDelta(s.Find(main)->rating, 1200, 1.0, 5);
+    CHECK_EQ(rec(main, fresh, "win", 30).ratingDelta[0], full / 2);
+    const int rating = s.Find(main)->rating;
+    // Forfeits don't count on the stat leaderboards.
+    auto wins = s.Leaderboard("wins", "all", "all", "", 100, 10);
+    CHECK_EQ(wins.Get("rows")->Items()[0].Num("value"), 4.0);  // 4 real wins, not the 2 forfeits
+    // Editing a rating in the accounts file (even with a valid checksum)
+    // changes nothing: ratings are rebuilt from the match history.
+    Json fake = Json::Object();
+    fake.Set("id", main).Set("name", "Main").Set("country", "IN").Set("tok", s.Find(main)->tokenHash);
+    fake.Set("created", 0).Set("rating", 3000).Set("rated", 99);
+    const std::string body = fake.Dump();
+    auto d = ctl::Sha256(body);
+    std::ofstream(dir + "/accounts.jsonl", std::ios::app)
+        << body << "\t#" << ctl::ToHex(std::string(d.begin(), d.begin() + 4)) << "\n";
+    Store again;
+    CHECK_OK(again.Open(dir));
+    CHECK_EQ(again.Find(main)->rating, rating);
+    CHECK_EQ(again.Find(main)->ratedGames, 6);
+}
+
+TEST(online_ranked_unlocks_after_full_matches_and_code_guessing_limited) {
+    OnlineConfig cfg = World::Cfg();
+    cfg.rankedUnlockMatches = 1;
+    World w(cfg);
+    RoomMatch rm(w, "overs=1");
+    const int64_t q = rm.a.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Ganga Royals"));
+    CHECK(rm.a.Err(q).find("finish your match") != std::string::npos);
+    Bot ba(rm.a, 1), bb(rm.b, 2);
+    CHECK(PlayOut(w, {&ba, &bb}));
+    CHECK(rm.a.Ok(rm.a.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Ganga Royals"))));
+    Client c(w);
+    c.Guest("New");
+    CHECK(c.Err(c.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Ganga Royals")))
+              .find("unlock ranked") != std::string::npos);
+    CHECK(c.Ok(c.Req("queue", Json::Object().Set("mode", "casual").Set("team", "Ganga Royals"))));
+    // Guessing room codes: 10 wrong tries a minute, then refused.
+    for (int i = 0; i < 10; ++i) c.Req("room-join", Json::Object().Set("code", "AAAAA" + std::string(1, 'A' + i)).Set("team", "Indus Falcons"));
+    CHECK(c.Err(c.Req("room-join", Json::Object().Set("code", "BBBBBB").Set("team", "Indus Falcons")))
+              .find("too many wrong codes") != std::string::npos);
+}
+
+TEST(online_action_ids_survive_a_server_crash) {
+    const std::string dir = TempDir("acts");
+    std::string aId, aTok, matchId;
+    int64_t aLast = 0;
+    {
+        OnlineConfig cfg = World::Cfg();
+        cfg.dataDir = dir;
+        World w(cfg, dir);
+        RoomMatch rm(w, "overs=5");
+        Bot ba(rm.a, 1), bb(rm.b, 2);
+        for (int i = 0; i < 40; ++i) {
+            ba.Play();
+            bb.Play();
+            w.Step(50);
+        }
+        aId = rm.a.id, aTok = rm.a.token, aLast = ba.actionId;
+        matchId = w.server.MatchOf(aId)->id;
+        CHECK(aLast > 0);
+    }
+    OnlineConfig cfg = World::Cfg();
+    cfg.dataDir = dir;
+    World w(cfg, dir);
+    CHECK_EQ(w.server.RecoverLiveMatches(w.now), static_cast<size_t>(1));
+    CHECK_EQ(w.server.MatchById(matchId)->lastActionId[0], aLast);
+    Client a(w);
+    a.id = aId, a.token = aTok;
+    CHECK(a.Login());
+    const auto before = w.server.MatchById(matchId)->host->Session().Inputs().size();
+    // The phone re-sends its last control after the crash: recognised, not repeated.
+    Json j = Json::Object();
+    j.Set("id", aLast).Set("a", Json::Object().Set("do", "bowl").Set("variation", "stock"));
+    a.Req("action", j);
+    CHECK(a.Last("ack")->Flag("dup"));
+    w.Step();
+    CHECK_EQ(w.server.MatchById(matchId)->host->Session().Inputs().size(), before);
 }

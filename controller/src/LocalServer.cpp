@@ -137,7 +137,6 @@ std::vector<std::string> LocalServer::LocalAddresses() {
 }
 
 void LocalServer::Accept(int64_t now) {
-    (void)now;
     while (true) {
         sockaddr_in peer{};
         socklen_t len = sizeof peer;
@@ -151,6 +150,7 @@ void LocalServer::Accept(int64_t now) {
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);  // controls must feel instant
         Client c;
         c.fd = fd;
+        c.openedAt = now;
         c.loopback = (ntohl(peer.sin_addr.s_addr) >> 24) == 127;
         clients_[fd] = c;
     }
@@ -372,7 +372,11 @@ void LocalServer::Poll(int timeoutMs, int64_t now) {
     std::vector<int> done;
     for (auto& [fd, c] : clients_) {
         Flush(c);
-        if (c.closing && c.out.empty()) done.push_back(fd);
+        if (c.closing && c.closingSince < 0) c.closingSince = now;
+        const bool stalledHttp = !c.websocket && now - c.openedAt > cfg_.httpTimeoutMs;
+        const bool notReading = c.out.size() > cfg_.maxPendingOutBytes;
+        const bool closeStuck = c.closing && now - c.closingSince > 5000;  // peer never read our last bytes
+        if ((c.closing && c.out.empty()) || stalledHttp || notReading || closeStuck) done.push_back(fd);
     }
     for (int fd : done) Drop(fd, now);
 }

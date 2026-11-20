@@ -12,7 +12,12 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 #include "cricket/controller/LocalServer.h"
 #include "cricket/online/OnlineServer.h"
@@ -69,6 +74,14 @@ int main(int argc, char** argv) {
     }
     cfg.dataDir = data;
     cfg.maxConnections = maxConnections;
+    // Only one server may use a data folder (two would corrupt it).
+    std::error_code ec;
+    std::filesystem::create_directories(data, ec);
+    const int lockFd = ::open((data + "/.lock").c_str(), O_CREAT | O_RDWR, 0600);
+    if (lockFd < 0 || ::flock(lockFd, LOCK_EX | LOCK_NB) != 0) {
+        std::cerr << "another cricket_server is already using " << data << "\n";
+        return 1;
+    }
     Store store;
     if (Status s = store.Open(data); !s) {
         std::cerr << "cannot open data folder: " << s.error << "\n";

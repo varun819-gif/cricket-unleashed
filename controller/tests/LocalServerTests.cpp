@@ -328,3 +328,18 @@ TEST(ctl_server_local_addresses_exclude_loopback) {
     CHECK(LocalServer::Routes().count("/") == 1);
     CHECK(LocalServer::Routes().count("/tv") == 0);  // never served as a file
 }
+
+TEST(ctl_server_drops_stalled_and_non_reading_clients) {
+    Server s;
+    CHECK_OK(s.server.Start());
+    // Slow request: opens a connection, sends half a request, then nothing.
+    Client slow(s);
+    slow.Send("GET /index.html HTTP/1.1\r\nHost: x");
+    s.now += 11000;
+    CHECK(!slow.Read());  // closed by the server
+    // A connection that completes its request in time is unaffected.
+    Client ok(s);
+    ok.Send("GET /index.html HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+    ok.Read();
+    CHECK(ok.buf.find("content of index.html") != std::string::npos);
+}

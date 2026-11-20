@@ -311,9 +311,15 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
         if (mode != "all" && mode != "ranked" && mode != "casual") return Reply(c, seq, false, "bad mode");
         if (!country.empty() && country.size() != 2) return Reply(c, seq, false, "bad country");
         const int64_t limit = std::clamp<int64_t>(j.Int("limit", 50), 1, 100);
-        return Reply(c, seq, true, "",
-                     Obj().Set("board", store_.Leaderboard(board, period, mode, country, now,
-                                                           static_cast<size_t>(limit))));
+        // Cached briefly: leaderboards scan the whole history.
+        const std::string key = board + "|" + period + "|" + mode + "|" + country + "|" + std::to_string(limit);
+        auto hit = boardCache_.find(key);
+        if (hit == boardCache_.end() || now - hit->second.first > cfg_.leaderboardCacheMs) {
+            if (boardCache_.size() > 500) boardCache_.clear();
+            boardCache_[key] = {now, store_.Leaderboard(board, period, mode, country, now, static_cast<size_t>(limit))};
+            hit = boardCache_.find(key);
+        }
+        return Reply(c, seq, true, "", Obj().Set("board", hit->second.second));
     }
     if (kind == "room-create") return RoomCreate(c, k, j, now);
     if (kind == "room-join") return RoomJoin(c, k, j, now);
@@ -398,6 +404,12 @@ void OnlineServer::OnAction(ConnId c, Conn& k, const Json& j, int64_t now) {
     if (m->aiTakeover[side]) return ack(false, "the AI is playing this side now", false);
     if (id <= m->lastActionId[side]) return ack(true, "", true);  // re-sent after a reconnect: already handled
     m->lastActionId[side] = id;
+    if (m->actsLog) {
+        // Remembered on disk, so after a server crash a re-sent control is
+        // still recognised as already handled (never applied twice).
+        std::fprintf(m->actsLog, "%d %lld\n", side, static_cast<long long>(id));
+        std::fflush(m->actsLog);
+    }
     ctl::ControllerAction act;
     act.device = k.account;
     act.side = side;
@@ -463,8 +475,14 @@ void OnlineServer::RoomJoin(ConnId c, Conn& k, const Json& j, int64_t now) {
     std::string code;
     for (char ch : j.Str("code"))
         if (ch != ' ' && ch != '-') code += static_cast<char>(ch >= 'a' && ch <= 'z' ? ch - 32 : ch);
+    while (!p.wrongCodes.empty() && now - p.wrongCodes.front() > 60000) p.wrongCodes.pop_front();
+    if (static_cast<int>(p.wrongCodes.size()) >= cfg_.maxWrongRoomCodesPerMinute)
+        return Reply(c, seq, false, "too many wrong codes - wait a minute");
     auto it = rooms_.find(code);
-    if (it == rooms_.end()) return Reply(c, seq, false, "no room with that code");
+    if (it == rooms_.end()) {
+        p.wrongCodes.push_back(now);
+        return Reply(c, seq, false, "no room with that code");
+    }
     Room& r = it->second;
     if (r.host == k.account) return Reply(c, seq, false, "that is your own room");
     if (!r.guest.empty() && r.guest != k.account) return Reply(c, seq, false, "room is full");
@@ -537,9 +555,14 @@ void OnlineServer::Enqueue(ConnId c, Conn& k, const Json& j, int64_t now) {
     if (!RulesFor(e.format)) return Reply(c, seq, false, "unknown format");
     const auto teams = TeamNames();
     if (std::find(teams.begin(), teams.end(), e.team) == teams.end()) return Reply(c, seq, false, "unknown team");
+    const Account* acc = store_.Find(k.account);
+    if (e.mode == "ranked" && acc->stats.completed < cfg_.rankedUnlockMatches)
+        return Reply(c, seq, false,
+                     "play " + std::to_string(cfg_.rankedUnlockMatches - acc->stats.completed) +
+                         " more full match(es) to unlock ranked");
     RoomLeave(k.account, true);
     Dequeue(k.account);
-    e.rating = store_.Find(k.account)->rating;
+    e.rating = acc->rating;
     e.joinedMs = now;
     queue_.push_back(e);
     Reply(c, seq, true, "");
@@ -635,6 +658,7 @@ Status OnlineServer::StartMatch(const std::string& mode, const std::string& form
         std::error_code ec;
         fs::create_directories(LiveDir(), ec);
         m->journal.Start(LiveDir() + "/" + m->id + ".journal", m->host->Session());
+        m->actsLog = std::fopen((LiveDir() + "/" + m->id + ".acts").c_str(), "w");
         WriteMeta(*m);
     }
     OnlineMatch& ref = *m;
@@ -716,6 +740,7 @@ void OnlineServer::FinishMatch(OnlineMatch& m, int winner, const std::string& ou
         SaveSessionFile(session, cfg_.dataDir + "/" + rec.saveFile);
     }
     rec = store_.RecordMatch(rec);
+    boardCache_.clear();
     for (int s = 0; s < 2; ++s) {
         Json e = Obj();
         e.Set("k", "end").Set("record", Store::MatchJson(rec)).Set("side", s);
@@ -731,6 +756,11 @@ void OnlineServer::FinishMatch(OnlineMatch& m, int winner, const std::string& ou
         fs::remove(LiveDir() + "/" + m.id + ".meta", ec);
         fs::remove(LiveDir() + "/" + m.id + ".meta.bak", ec);
         fs::remove(LiveDir() + "/" + m.id + ".journal", ec);
+        if (m.actsLog) {
+            std::fclose(m.actsLog);
+            m.actsLog = nullptr;
+        }
+        fs::remove(LiveDir() + "/" + m.id + ".acts", ec);
     }
     m.goneSince = {-2, -2};  // marks the match finished; Tick removes it
 }
@@ -768,6 +798,14 @@ size_t OnlineServer::RecoverLiveMatches(int64_t now) {
         m->lastInputs = m->host->Session().LastEventId();
         m->clockOffset = std::max<int64_t>(0, m->host->Session().NowMs() - now);
         m->journal.Start(LiveDir() + "/" + id + ".journal", m->host->Session());
+        {
+            std::ifstream acts(LiveDir() + "/" + id + ".acts");
+            int side = 0;
+            long long aid = 0;
+            while (acts >> side >> aid)
+                if (side == 0 || side == 1) m->lastActionId[side] = std::max<int64_t>(m->lastActionId[side], aid);
+        }
+        m->actsLog = std::fopen((LiveDir() + "/" + id + ".acts").c_str(), "a");
         for (int s = 0; s < 2; ++s) {
             presence_[m->players[s]].match = id;
             m->goneSince[s] = m->aiTakeover[s] ? -1 : now;  // both must reconnect within the grace period

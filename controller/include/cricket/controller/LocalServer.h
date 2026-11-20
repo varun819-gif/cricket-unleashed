@@ -26,6 +26,11 @@ struct ServerConfig {
     size_t maxHttpBytes = 8192;
     size_t maxFrameBytes = 16384;
     size_t maxClients = 32;
+    // A connection must finish its HTTP request within this time (stops
+    // "slow" connections from filling the server).
+    int64_t httpTimeoutMs = 10000;
+    // A client that stops reading is dropped once this much is waiting for it.
+    size_t maxPendingOutBytes = 1 << 20;
     // URL path -> (file path, content type). Relative file paths are looked
     // up in webRoot. Empty = the phone-controller files (Routes()).
     std::map<std::string, std::pair<std::string, std::string>> routes;
@@ -57,6 +62,8 @@ public:
 private:
     struct Client {
         int fd = -1;
+        int64_t openedAt = 0;
+        int64_t closingSince = -1;
         bool loopback = false;
         bool websocket = false;
         bool closing = false;
