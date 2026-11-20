@@ -23,7 +23,7 @@
                                | events / intents
 +------------------------------v------------------------------+
 |  cricket_core (this repo, plain C++20, no engine deps)       |
-|  MatchRules  Innings  Match  Toss  Lbw  FieldPlacement       |
+|  MatchRules  Innings  Match  Toss  Lbw  Drs  FieldPlacement  |
 |  AutoCaptain(CricketAI)  Commentary  MatchSession            |
 +------------------------------+------------------------------+
                                | same library
@@ -39,7 +39,7 @@
 
 | Spec module | Where it lives now / later |
 |---|---|
-| CricketRules | `MatchRules`, `Innings`, `Lbw` (done) |
+| CricketRules | `MatchRules`, `Innings`, `Lbw`, `Drs` (done) |
 | MatchManager | `Match` (done); Unreal `ACricketGameMode` wraps it (planned) |
 | TossManager | `Toss` (done) + toss cinematic in Unreal (planned) |
 | FieldPlacementManager | `FieldPlacement` (done) + overhead field editor UI (planned) |
@@ -59,7 +59,10 @@
 1. The fielding captain's `SetBowler` / `SetField` commands are checked by `MatchSession`.
 2. Player inputs (bowling plan, shot timing) go to the **server** physics.
 3. Physics resolves a `Delivery` (runs, extras, dismissal) and calls
-   `MatchSession::ResolveDelivery`.
+   `MatchSession::ResolveDelivery`. For a close call it instead builds a
+   `DecisionCase` (both outcomes + replay evidence) and calls
+   `ResolveAppeal`. Play is held until the review / referral is decided (see
+   DRS_DESIGN.md).
 4. `Innings::Bowl` checks it against the laws and updates the scorecard. It
    returns a `DeliveryRecord`.
 5. A `SessionEvent` is added to the log. Clients get it, play the replay and

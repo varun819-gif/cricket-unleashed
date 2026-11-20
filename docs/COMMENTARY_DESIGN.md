@@ -17,6 +17,10 @@
 - Categories: dot, single, runs, four, six, wide, noball, freehit, bye,
   legbye, wicket.{bowled,caught,lbw,stumped,runout,other}, fifty, hundred,
   maiden, over, innings, result, expert.{wicket,boundary,chase}.
+- Decisions (`DescribeDecision`): appeal.{out,notout}, review.{taken,
+  overturned,upheld,umpirescall}, thirdumpire.{out,notout}, noball.check,
+  expert.review (the expert explains the replay reason in English. Hindi uses
+  a general line for now).
 - Each output line has `category` + `lineId`, which map 1:1 to **recorded
   audio clips**. Text is also the subtitle and the fallback when a clip is
   missing.

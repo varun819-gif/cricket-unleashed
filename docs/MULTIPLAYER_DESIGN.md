@@ -30,6 +30,11 @@ sends intents to the server.
   winner decides, only the fielding captain sets the field or picks the bowler,
   and only the batting captain declares.
 - `ResolveDelivery(Delivery)`: called only by server physics.
+- `ResolveAppeal(DecisionCase)`: server-only close call with replay evidence.
+  Player appeals wait for a `Review` command from the entitled side (review
+  or accept). The server-side review timer calls `ExpireReviewWindow()`.
+  Referrals (run out, stumping, clean catch) are decided at once. See
+  DRS_DESIGN.md.
 - **Event log**: every accepted change gets an increasing id. A reconnecting
   client calls `EventsSince(lastSeenId)` and catches up without missing or
   repeating anything. This is tested by dropping updates on purpose.

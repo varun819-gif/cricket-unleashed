@@ -9,11 +9,18 @@
    batter's end based on runs completed. The real law (which end the wicket
    was broken at, whether batters had crossed) needs the physics position data.
 4. **No-ball byes/leg-byes**: runs off a no-ball are always credited to the
-   batter. Byes off a no-ball are not modelled yet.
+   batter. Byes off a no-ball are not modelled yet. When DRS finds a no-ball on
+   a bye/leg-bye/wide ball, those runs are dropped and only the penalty counts.
 5. **Shortened-match rules**: rain-reduced overs (DLS) are not implemented.
    Custom-overs games use a T20-style ~30% powerplay.
-6. **DRS is LBW-only** and review counts are not yet tracked per innings in
-   `MatchSession`. Caught-behind reviews (UltraEdge) are pending.
+6. **DRS limits**: the evidence (edge, grounding, ball tracking) comes from the
+   server's simulation. Until Unreal physics exists, `QuickSim` makes it up
+   with simple probabilities. Not modelled yet: reviews for other modes
+   (hit wicket, obstructing), "soft" checks of boundaries / short runs by the
+   TV umpire, and the 15-second review timer itself (the server must call
+   `ExpireReviewWindow()`). Players can't challenge a wide or no-ball call.
+   The AI's review choice peeks at the evidence with a difficulty-based error
+   rate, which approximates "what the players saw".
 7. **Test match session breaks** (lunch/tea/stumps), new-ball availability
    after 80 overs and save/resume are not implemented.
 8. **Penalty runs, retired hurt, substitutes and concussion replacements** are

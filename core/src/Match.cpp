@@ -35,6 +35,8 @@ Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
 void Match::StartInnings(int side, std::optional<int> target) {
     innings_.emplace_back(rules_, side, static_cast<int>(innings_.size()), target);
     phase_ = MatchPhase::InProgress;
+    reviewsLeft_ = {rules_.reviewsPerInnings, rules_.reviewsPerInnings};  // fresh reviews each innings
+    pending_.reset();
 }
 
 int Match::RunsForSide(int side) const {
@@ -71,6 +73,11 @@ Status Match::SetNextBatter(int b) {
 }
 
 Status Match::Bowl(const Delivery& d, DeliveryRecord* out) {
+    if (pending_) return Status::Err("a decision is pending: review it or accept it first");
+    return BowlInternal(d, out);
+}
+
+Status Match::BowlInternal(const Delivery& d, DeliveryRecord* out) {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     Status s = Current().Bowl(d, out);
     if (!s) return s;
@@ -85,6 +92,7 @@ Status Match::Bowl(const Delivery& d, DeliveryRecord* out) {
 
 Status Match::Declare() {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
+    if (pending_) return Status::Err("a decision is pending");
     Status s = Current().Declare();
     if (s) Advance();
     return s;
@@ -99,6 +107,7 @@ Status Match::DecideFollowOn(bool enforce) {
 
 void Match::CallDraw() {
     if (phase_ == MatchPhase::Complete) return;
+    pending_.reset();
     Current().ForceComplete();
     phase_ = MatchPhase::Complete;
     if (rules_.format == Format::Test) {
@@ -112,6 +121,7 @@ void Match::CallDraw() {
 
 void Match::Abandon() {
     if (phase_ == MatchPhase::Complete) return;
+    pending_.reset();
     Current().ForceComplete();
     phase_ = MatchPhase::Complete;
     result_.kind = MatchResult::Kind::NoResult;
@@ -186,6 +196,89 @@ void Match::Advance() {
             FinishWithChase(innings_[3], *innings_[3].Target());
             break;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Decisions and DRS
+
+int Match::ReviewEntitledSide() const {
+    if (!pending_) return -1;
+    // The side the on-field call went against may review it.
+    return pending_->onFieldOut ? BattingSide() : FieldingSide();
+}
+
+Status Match::ValidateCase(const DecisionCase& c) const {
+    if (c.mode == Dismissal::None) return Status::Err("appeal needs a mode of dismissal");
+    if (c.kind == DecisionKind::PlayerAppeal && !IsPlayerReviewable(c.mode))
+        return Status::Err(std::string("players appeal for caught or LBW; ") + ToString(c.mode) +
+                           " is referred by the umpires");
+    if (c.kind == DecisionKind::UmpireReferral && !IsUmpireReferable(c.mode))
+        return Status::Err(std::string("umpires do not refer ") + ToString(c.mode));
+    if (c.mode == Dismissal::Lbw && !c.evidence.lbw) return Status::Err("an LBW appeal needs ball-tracking evidence");
+    if (c.ifOut.dismissal != c.mode) return Status::Err("ifOut must record the appealed mode of dismissal");
+    if (c.ifNotOut.dismissal != Dismissal::None) return Status::Err("ifNotOut must not contain a dismissal");
+    const Innings& inn = Current();
+    if (Status s = inn.Check(c.ifOut); !s) return Status::Err("ifOut: " + s.error);
+    if (Status s = inn.Check(c.ifNotOut); !s) return Status::Err("ifNotOut: " + s.error);
+    if (c.mode == Dismissal::Caught && c.evidence.lbw) {
+        Delivery lbw = c.ifOut;
+        lbw.dismissal = Dismissal::Lbw;
+        if (Status s = inn.Check(lbw); !s) return Status::Err("LBW check: " + s.error);
+    }
+    return Status::Ok();
+}
+
+Status Match::Appeal(const DecisionCase& c, DecisionRecord* decision, DeliveryRecord* ball) {
+    if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
+    if (pending_) return Status::Err("a decision is already pending");
+    if (Current().State() != InningsState::InPlay) return Status::Err("no ball can be bowled right now");
+    if (Status s = ValidateCase(c); !s) return s;
+    pending_ = c;
+    if (c.kind == DecisionKind::UmpireReferral) return ApplyDecision(JudgeReferral(c), false, -1, decision, ball);
+    if (decision) *decision = {};
+    return Status::Ok();
+}
+
+Status Match::ReviewDecision(int side, DecisionRecord* decision, DeliveryRecord* ball) {
+    if (!pending_) return Status::Err("there is no decision to review");
+    const int entitled = ReviewEntitledSide();
+    if (side != entitled)
+        return Status::Err(std::string("only the ") + (pending_->onFieldOut ? "batting" : "fielding") +
+                           " side can review this decision");
+    if (reviewsLeft_[side] <= 0) return Status::Err("no reviews left this innings");
+    DrsOutcome o = JudgeReview(*pending_);
+    if (o.reviewLost) reviewsLeft_[side]--;
+    return ApplyDecision(o, true, side, decision, ball);
+}
+
+Status Match::AcceptDecision(DecisionRecord* decision, DeliveryRecord* ball) {
+    if (!pending_) return Status::Err("there is no decision to accept");
+    return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
+}
+
+Status Match::ApplyDecision(const DrsOutcome& o, bool reviewed, int side, DecisionRecord* decision,
+                            DeliveryRecord* ball) {
+    const DecisionCase c = *pending_;
+    DecisionRecord rec;
+    rec.inningsIndex = Current().Index();
+    rec.over = Current().CompletedOvers();
+    rec.ballInOver = Current().BallsInOver();
+    rec.kind = c.kind;
+    rec.appealedFor = c.mode;
+    rec.onFieldOut = c.onFieldOut;
+    rec.reviewed = reviewed;
+    rec.reviewingSide = side;
+    rec.result = o;
+    rec.reviewsLeftAfter = side >= 0 ? reviewsLeft_[side] : -1;
+
+    const Delivery d = FinalDelivery(c, o);
+    // Validated when the appeal was made, so this cannot fail; keep the
+    // pending decision if it somehow does, rather than losing the ball.
+    if (Status s = Current().Check(d); !s) return Status::Err("internal: final delivery rejected: " + s.error);
+    pending_.reset();
+    decisions_.push_back(rec);
+    if (decision) *decision = rec;
+    return BowlInternal(d, ball);
 }
 
 }  // namespace cricket

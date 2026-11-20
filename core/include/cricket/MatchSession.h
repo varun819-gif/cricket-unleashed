@@ -35,6 +35,7 @@ enum class CommandType {
     SetField,        // field = custom setup
     Declare,
     FollowOn,        // a = 1 enforce / 0 bat again
+    Review,          // a = 1 review the pending decision / 0 accept it
 };
 
 struct Command {
@@ -50,11 +51,14 @@ struct SessionEvent {
     std::string kind;  // "toss", "decision", "ball", "field", "innings", "result", ...
     std::string text;
     std::optional<DeliveryRecord> ball;
+    std::optional<DecisionRecord> decision;
 };
 
 // What the session is waiting for next, and from which side.
 struct Pending {
-    std::string what;  // "toss-call", "toss-decision", "openers", "bowler", "batter", "follow-on", "delivery", "none"
+    // "toss-call", "toss-decision", "openers", "bowler", "batter", "follow-on",
+    // "review" (side = who may review), "delivery", "none"
+    std::string what;
     int side = -1;
 };
 
@@ -67,6 +71,11 @@ public:
     Status Submit(const Command& c);
     // Server-side ball resolution (physics / QuickSim). Never called with client data.
     Status ResolveDelivery(const Delivery& d);
+    // Server-side: a close call with replay evidence (also server-generated).
+    // Player appeals then wait for the entitled side to Review or accept.
+    Status ResolveAppeal(const DecisionCase& c);
+    // Server-side: the review timer ran out, so the on-field call stands.
+    Status ExpireReviewWindow();
     // Lets AI captains take any decisions that are theirs to take.
     void RunAi();
 
@@ -84,6 +93,9 @@ private:
     void StartMatch();
     void EnsureLegalField();
     void AfterMatchChange();
+    void LogBall(const DeliveryRecord& rec);
+    void LogDecision(const DecisionRecord& d);
+    Status FinishDecision(Status s, const DecisionRecord& d, const DeliveryRecord& ball);
     bool IsHuman(int side) const;
     int SideOf(const std::string& player) const;
 

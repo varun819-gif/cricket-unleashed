@@ -159,16 +159,7 @@ void Innings::CheckCompletion() {
     }
 }
 
-Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
-    switch (State()) {
-        case InningsState::Complete: return Status::Err("innings is complete");
-        case InningsState::AwaitingOpeners: return Status::Err("set openers first");
-        case InningsState::AwaitingBatter: return Status::Err("waiting for the next batter");
-        case InningsState::AwaitingBowler: return Status::Err("choose a bowler for the over");
-        case InningsState::InPlay: break;
-    }
-
-    // ---- validate the resolved delivery --------------------------------
+Status Innings::Check(const Delivery& d) const {
     if (d.runs < 0 || d.runs > 7) return Status::Err("runs out of range");
     if (d.boundary) {
         if (d.runs != 4 && d.runs != 6) return Status::Err("boundary must be 4 or 6");
@@ -186,6 +177,20 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
         if (!d.strikerOut) return Status::Err("only the striker can be out that way");
         if (d.runs != 0 || d.boundary) return Status::Err("no runs can be scored on that dismissal");
     }
+
+    return Status::Ok();
+}
+
+Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
+    switch (State()) {
+        case InningsState::Complete: return Status::Err("innings is complete");
+        case InningsState::AwaitingOpeners: return Status::Err("set openers first");
+        case InningsState::AwaitingBatter: return Status::Err("waiting for the next batter");
+        case InningsState::AwaitingBowler: return Status::Err("choose a bowler for the over");
+        case InningsState::InPlay: break;
+    }
+
+    if (Status v = Check(d); !v) return v;
 
     // ---- apply ----------------------------------------------------------
     DeliveryRecord rec;

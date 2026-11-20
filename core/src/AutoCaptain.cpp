@@ -111,6 +111,98 @@ bool AutoCaptain::ShouldDeclare(const Match& m) const {
     return inn.Total() >= 600;
 }
 
+bool AutoCaptain::ShouldReview(const Match& m, int side) {
+    const DecisionCase* c = m.PendingDecision();
+    if (!c || m.ReviewEntitledSide() != side || m.ReviewsRemaining(side) <= 0) return false;
+    const bool wouldWin = JudgeReview(*c).outcome == ReviewOutcome::Overturned;
+    double accuracy = 0.75;
+    switch (difficulty_) {
+        case Difficulty::Beginner: accuracy = 0.55; break;
+        case Difficulty::Easy: accuracy = 0.65; break;
+        case Difficulty::Medium: accuracy = 0.75; break;
+        case Difficulty::Hard: accuracy = 0.85; break;
+        case Difficulty::WorldClass: accuracy = 0.92; break;
+        case Difficulty::Adaptive: accuracy = 0.8; break;
+    }
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    bool thinksWin = u(rng_) < accuracy ? wouldWin : !wouldWin;
+    // With the last review, only go upstairs when quite sure.
+    if (thinksWin && m.ReviewsRemaining(side) == 1 && u(rng_) < 0.3) thinksWin = false;
+    return thinksWin;
+}
+
+LbwEvidence QuickSim::RandomLbw() {
+    LbwEvidence e;
+    double p = U();
+    e.pitched = p < 0.85 ? PitchZone::InLine : p < 0.95 ? PitchZone::OutsideOff : PitchZone::OutsideLeg;
+    double i = U();
+    e.impact = i < 0.85 ? ImpactZone::InLine : i < 0.95 ? ImpactZone::OutsideOff : ImpactZone::OutsideLeg;
+    e.impactUmpiresCall = U() < 0.1;
+    double w = U();
+    e.wickets = w < 0.6 ? WicketsZone::Hitting : w < 0.8 ? WicketsZone::UmpiresCall : WicketsZone::Missing;
+    e.hitBatFirst = U() < 0.05;
+    e.shotOffered = U() < 0.85;
+    return e;
+}
+
+std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d) {
+    const Innings& inn = m.Current();
+    DecisionCase c;
+    c.evidence.frontFootNoBall = d.extra == ExtraType::None && U() < 0.02;
+    c.ifOut = d;
+    switch (d.dismissal) {
+        case Dismissal::Caught: {
+            c.kind = DecisionKind::PlayerAppeal;
+            c.mode = Dismissal::Caught;
+            double e = U();
+            c.evidence.batContact = e < 0.9 ? Evidence::Yes : e < 0.97 ? Evidence::No : Evidence::Inconclusive;
+            double g = U();
+            c.evidence.groundedBeforeCatch = g < 0.95 ? Evidence::No : g < 0.98 ? Evidence::Yes : Evidence::Inconclusive;
+            if (c.evidence.batContact == Evidence::No && U() < 0.4) c.evidence.lbw = RandomLbw();
+            const bool truth = c.evidence.batContact == Evidence::Yes && c.evidence.groundedBeforeCatch == Evidence::No;
+            c.onFieldOut = c.evidence.batContact == Evidence::Inconclusive ? U() < 0.5 : (U() < 0.88 ? truth : !truth);
+            c.ifNotOut = Delivery{};
+            return c;
+        }
+        case Dismissal::Lbw: {
+            c.kind = DecisionKind::PlayerAppeal;
+            c.mode = Dismissal::Lbw;
+            c.evidence.lbw = RandomLbw();
+            const bool truth = LbwIsOut(*c.evidence.lbw);
+            c.onFieldOut = U() < 0.85 ? truth : !truth;
+            c.ifNotOut = Delivery{};
+            return c;
+        }
+        case Dismissal::Stumped:
+        case Dismissal::RunOut: {
+            c.kind = DecisionKind::UmpireReferral;
+            c.mode = d.dismissal;
+            double g = U();
+            c.evidence.batterGrounded = g < 0.85 ? Evidence::No : g < 0.9 ? Evidence::Inconclusive : Evidence::Yes;
+            c.ifNotOut = d;
+            c.ifNotOut.dismissal = Dismissal::None;
+            return c;
+        }
+        case Dismissal::None:
+            // A loud shout for LBW on a dot ball.
+            if (d.extra == ExtraType::None && d.runs == 0 && !inn.NextBallIsFreeHit() && U() < 0.04) {
+                c.kind = DecisionKind::PlayerAppeal;
+                c.mode = Dismissal::Lbw;
+                c.evidence.lbw = RandomLbw();
+                if (U() < 0.5) c.evidence.lbw->wickets = WicketsZone::Missing;
+                const bool truth = LbwIsOut(*c.evidence.lbw);
+                c.onFieldOut = U() < 0.9 ? truth : !truth;
+                c.ifOut = Delivery{};
+                c.ifOut.dismissal = Dismissal::Lbw;
+                c.ifNotOut = d;
+                return c;
+            }
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
+}
+
 Delivery QuickSim::Next(const Match& m) {
     const auto& inn = m.Current();
     const Team& bat = m.GetTeam(m.BattingSide());

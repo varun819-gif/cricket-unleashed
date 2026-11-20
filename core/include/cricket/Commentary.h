@@ -29,6 +29,8 @@ public:
     // Lines for one ball (lead commentator, plus expert on big moments).
     std::vector<CommentaryLine> Describe(const Match& m, const DeliveryRecord& r);
     std::vector<CommentaryLine> DescribeResult(const Match& m);
+    // Appeals, DRS reviews and third-umpire referrals.
+    std::vector<CommentaryLine> DescribeDecision(const Match& m, const DecisionRecord& d);
 
 private:
     CommentaryLine Pick(const std::string& speaker, const std::string& category,

@@ -74,7 +74,9 @@ int main(int argc, char** argv) {
 
     uint64_t seen = 0;
     while (session.WaitingFor().what == "delivery") {
-        session.ResolveDelivery(sim.Next(session.GetMatch()));
+        Delivery d = sim.Next(session.GetMatch());
+        if (auto c = sim.MakeCase(session.GetMatch(), d)) session.ResolveAppeal(*c);
+        else session.ResolveDelivery(d);
         for (const auto& e : session.EventsSince(seen)) {
             if (e.kind == "ball") {
                 if (!quiet) {
@@ -84,6 +86,9 @@ int main(int argc, char** argv) {
                 }
             } else {
                 std::cout << "** " << e.text << "\n";
+                if (e.decision && !quiet)
+                    for (const auto& l : com.DescribeDecision(session.GetMatch(), *e.decision))
+                        std::cout << "      " << l.speaker << ": " << l.text << "\n";
             }
         }
         seen = session.LastEventId();

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "cricket/Drs.h"
 #include "cricket/Innings.h"
 #include "cricket/MatchRules.h"
 
@@ -37,6 +38,25 @@ public:
     Status SetNextBatter(int batter);
     Status Bowl(const Delivery& d, DeliveryRecord* out = nullptr);
     Status Declare();
+
+    // ---- Decisions and DRS --------------------------------------------
+    // An appeal on the next ball. A PlayerAppeal (caught / LBW) waits for
+    // ReviewDecision() or AcceptDecision(). An UmpireReferral (run out,
+    // stumping, clean catch) is judged by the TV umpire straight away.
+    // While a decision is pending, Bowl() is refused.
+    Status Appeal(const DecisionCase& c, DecisionRecord* decision = nullptr, DeliveryRecord* ball = nullptr);
+    // `side` asks the TV umpire to review the pending on-field call.
+    Status ReviewDecision(int side, DecisionRecord* decision = nullptr, DeliveryRecord* ball = nullptr);
+    // Nobody reviews (or the review timer ran out).
+    Status AcceptDecision(DecisionRecord* decision = nullptr, DeliveryRecord* ball = nullptr);
+    bool HasPendingDecision() const { return pending_.has_value(); }
+    const DecisionCase* PendingDecision() const { return pending_ ? &*pending_ : nullptr; }
+    // Which side may review the pending decision (-1 if none).
+    int ReviewEntitledSide() const;
+    // Unsuccessful reviews still available to `side` in the current innings.
+    int ReviewsRemaining(int side) const { return reviewsLeft_.at(side); }
+    const std::vector<DecisionRecord>& Decisions() const { return decisions_; }
+
     // Test only: the side that batted first decides after innings 2.
     Status DecideFollowOn(bool enforce);
     // Time ran out (Test) or the game was called off.
@@ -57,6 +77,10 @@ public:
 
 private:
     void Advance();
+    Status BowlInternal(const Delivery& d, DeliveryRecord* out);
+    Status ValidateCase(const DecisionCase& c) const;
+    Status ApplyDecision(const DrsOutcome& o, bool reviewed, int side, DecisionRecord* decision,
+                         DeliveryRecord* ball);
     void StartInnings(int side, std::optional<int> target);
     void FinishWithChase(const Innings& chase, int target);
     std::string Name(int side) const { return teams_[side].name; }
@@ -69,6 +93,9 @@ private:
     MatchPhase phase_ = MatchPhase::InProgress;
     MatchResult result_;
     bool followOn_ = false;
+    std::optional<DecisionCase> pending_;
+    std::array<int, 2> reviewsLeft_{0, 0};
+    std::vector<DecisionRecord> decisions_;
 };
 
 }  // namespace cricket

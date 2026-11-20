@@ -20,6 +20,15 @@ Status key: ✅ done · 🟡 in progress · ⬜ not started
 | 14 | Android TV and PC builds | ⬜ | Needs real devices |
 | 15 | Testing, security, release prep | ⬜ | |
 
+## Priority 1: missing cricket rules (approved plan)
+
+| Step | Feature | Status |
+|---|---|---|
+| 1 | DRS for caught + other reviewable decisions, umpire referrals | ✅ done (awaiting review) |
+| 2 | Test match lunch / tea / stumps | ⬜ waiting for approval of Step 1 |
+| 3 | Rain interruptions + provisional DLS-style revised targets (non-official) | ⬜ |
+| 4 | Match save and resume | ⬜ |
+
 ## Milestone 1: what is still needed from the team
 
 This cloud workspace is a Linux container with **no GPU and no Unreal Engine**,

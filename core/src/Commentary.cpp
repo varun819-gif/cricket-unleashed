@@ -48,6 +48,17 @@ const Pool& English() {
                              "That's the release shot the batting side needed."}},
         {"expert.chase", {"They need {need} from {balls} balls now.", "Required rate is {rrr}. Pressure is on."}},
         {"result", {"{summary}! What a contest!", "And that's the match. {summary}."}},
+        {"appeal.out", {"Big appeal... and the finger goes up!", "Given out on the field!"}},
+        {"appeal.notout", {"Huge appeal, but the umpire says not out.", "Shout turned down by the umpire."}},
+        {"review.taken", {"{team} have gone upstairs! They want a review.", "That's a review from {team}."}},
+        {"review.overturned", {"The decision is OVERTURNED!", "Overturned! The TV umpire changes it."}},
+        {"review.upheld", {"The on-field decision stands. {team} lose a review.", "Review unsuccessful. Decision stays."}},
+        {"review.umpirescall", {"Umpire's call! The decision stays, and {team} keep their review.",
+                                "So close... umpire's call. Review retained."}},
+        {"thirdumpire.out", {"The big screen says OUT!", "Third umpire confirms it. OUT!"}},
+        {"thirdumpire.notout", {"NOT OUT says the third umpire!", "The big screen shows not out. Lucky escape!"}},
+        {"noball.check", {"Hang on... it's a no-ball! Saved by the front foot.", "No-ball! The bowler overstepped, the wicket doesn't count."}},
+        {"expert.review", {"The replays were clear: {reason}.", "Technology decides it: {reason}."}},
     };
     return p;
 }
@@ -79,6 +90,16 @@ const Pool& Hindi() {
         {"expert.boundary", {"सिर एकदम स्थिर, लेंथ जल्दी पढ़ ली।", "यही शॉट टीम को चाहिए था।"}},
         {"expert.chase", {"अब {balls} गेंदों में {need} रन चाहिए।", "आवश्यक रन रेट {rrr}, दबाव बढ़ रहा है।"}},
         {"result", {"{summary}! क्या मुकाबला था!"}},
+        {"appeal.out", {"ज़ोरदार अपील... और उंगली उठ गई!", "मैदानी अंपायर ने आउट दिया!"}},
+        {"appeal.notout", {"बड़ी अपील, लेकिन अंपायर ने नॉट आउट दिया।", "अपील ठुकरा दी गई।"}},
+        {"review.taken", {"{team} ने रिव्यू लिया है!", "{team} तीसरे अंपायर के पास गए।"}},
+        {"review.overturned", {"फ़ैसला पलट गया!", "तीसरे अंपायर ने फ़ैसला बदल दिया!"}},
+        {"review.upheld", {"मैदानी फ़ैसला बरकरार। {team} का एक रिव्यू गया।", "रिव्यू नाकाम रहा।"}},
+        {"review.umpirescall", {"अंपायर्स कॉल! फ़ैसला वही, और {team} का रिव्यू बचा रहा।"}},
+        {"thirdumpire.out", {"बड़ी स्क्रीन पर आउट!", "तीसरे अंपायर ने आउट दिया!"}},
+        {"thirdumpire.notout", {"तीसरे अंपायर का फ़ैसला: नॉट आउट!", "बाल-बाल बचे, नॉट आउट!"}},
+        {"noball.check", {"रुकिए... ये नो-बॉल है! विकेट नहीं मिलेगा।"}},
+        {"expert.review", {"तकनीक ने साफ़ फ़ैसला कर दिया।", "रीप्ले में सब साफ़ दिख गया।"}},
     };
     return p;
 }
@@ -181,6 +202,35 @@ std::vector<CommentaryLine> CommentaryEngine::Describe(const Match& m, const Del
 std::vector<CommentaryLine> CommentaryEngine::DescribeResult(const Match& m) {
     if (m.Phase() != MatchPhase::Complete) return {};
     return {Pick("Lead", "result", {{"summary", m.Result().summary}})};
+}
+
+std::vector<CommentaryLine> CommentaryEngine::DescribeDecision(const Match& m, const DecisionRecord& d) {
+    std::vector<CommentaryLine> out;
+    const Innings& inn = m.AllInnings().at(d.inningsIndex);
+    const int entitled = d.onFieldOut ? inn.BattingSide() : 1 - inn.BattingSide();
+    std::map<std::string, std::string> v = {
+        {"team", m.GetTeam(d.reviewed ? d.reviewingSide : entitled).name},
+        {"reason", d.result.reason},
+    };
+    if (d.kind == DecisionKind::PlayerAppeal) {
+        out.push_back(Pick("Lead", d.onFieldOut ? "appeal.out" : "appeal.notout", v));
+        if (d.reviewed) {
+            out.push_back(Pick("Lead", "review.taken", v));
+            const char* cat = "review.upheld";
+            if (d.result.outcome == ReviewOutcome::Overturned) cat = "review.overturned";
+            else if (d.result.outcome == ReviewOutcome::UmpiresCall) cat = "review.umpirescall";
+            if (d.result.noBall) out.push_back(Pick("Lead", "noball.check", v));
+            else out.push_back(Pick("Lead", cat, v));
+            out.push_back(Pick("Expert", "expert.review", v));
+        } else if (d.result.noBall && d.onFieldOut) {
+            out.push_back(Pick("Lead", "noball.check", v));
+        }
+    } else {
+        if (d.result.noBall && !d.result.finalOut) out.push_back(Pick("Lead", "noball.check", v));
+        else out.push_back(Pick("Lead", d.result.finalOut ? "thirdumpire.out" : "thirdumpire.notout", v));
+        out.push_back(Pick("Expert", "expert.review", v));
+    }
+    return out;
 }
 
 }  // namespace cricket

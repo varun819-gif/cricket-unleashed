@@ -22,7 +22,8 @@ struct LbwEvidence {
 // What a perfect umpire would give.
 bool LbwIsOut(const LbwEvidence& e);
 
-enum class ReviewOutcome { Upheld, Overturned, UmpiresCall };
+// ThirdUmpire: an umpire referral (no team review used). NotReviewed: on-field call accepted.
+enum class ReviewOutcome { Upheld, Overturned, UmpiresCall, ThirdUmpire, NotReviewed };
 
 struct ReviewResult {
     ReviewOutcome outcome;

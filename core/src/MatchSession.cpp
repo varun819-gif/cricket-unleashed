@@ -70,6 +70,7 @@ Pending MatchSession::WaitingFor() const {
     const Match& m = *match_;
     if (m.Phase() == MatchPhase::Complete) return {"none", -1};
     if (m.Phase() == MatchPhase::AwaitingFollowOnDecision) return {"follow-on", m.AllInnings()[0].BattingSide()};
+    if (m.HasPendingDecision()) return {"review", m.ReviewEntitledSide()};
     switch (m.Current().State()) {
         case InningsState::AwaitingOpeners: return {"openers", m.BattingSide()};
         case InningsState::AwaitingBatter: return {"batter", m.BattingSide()};
@@ -189,6 +190,13 @@ Status MatchSession::Apply(int side, const Command& c) {
         }
             AfterMatchChange();
             return s;
+        case CommandType::Review: {
+            if (!(s = mustBe("review", p.side))) return s;
+            DecisionRecord dec;
+            DeliveryRecord ball;
+            return FinishDecision(c.a ? match_->ReviewDecision(side, &dec, &ball) : match_->AcceptDecision(&dec, &ball),
+                                  dec, ball);
+        }
         case CommandType::FollowOn:
             if (!(s = mustBe("follow-on", p.side))) return s;
             if (!(s = match_->DecideFollowOn(c.a != 0))) return s;
@@ -205,10 +213,80 @@ Status MatchSession::ResolveDelivery(const Delivery& d) {
     DeliveryRecord rec;
     Status s = match_->Bowl(d, &rec);
     if (!s) return s;
+    LogBall(rec);
+    RunAi();
+    return s;
+}
+
+void MatchSession::LogBall(const DeliveryRecord& rec) {
     Log("ball", BallText(*match_, rec), rec);
     if (rec.inningsCompleted) Log("innings-end", match_->AllInnings()[rec.inningsIndex].ScoreString());
     AfterMatchChange();
+}
+
+namespace {
+const char* OutcomeText(ReviewOutcome o) {
+    switch (o) {
+        case ReviewOutcome::Upheld: return "decision stands";
+        case ReviewOutcome::Overturned: return "OVERTURNED";
+        case ReviewOutcome::UmpiresCall: return "umpire's call";
+        case ReviewOutcome::ThirdUmpire: return "third umpire";
+        case ReviewOutcome::NotReviewed: return "not reviewed";
+    }
+    return "?";
+}
+}  // namespace
+
+void MatchSession::LogDecision(const DecisionRecord& d) {
+    std::string t;
+    if (d.kind == DecisionKind::UmpireReferral) {
+        t = std::string("Referral (") + ToString(d.appealedFor) + "): ";
+    } else {
+        t = std::string("Appeal (") + ToString(d.appealedFor) + "), on-field " + (d.onFieldOut ? "OUT" : "NOT OUT") +
+            ". ";
+        if (d.reviewed)
+            t += teams_[d.reviewingSide].name + " review: " + OutcomeText(d.result.outcome) + ". ";
+    }
+    t += d.result.finalOut ? std::string("OUT ") + ToString(d.result.finalMode) : std::string("NOT OUT");
+    if (d.result.noBall) t += " (no-ball)";
+    t += " - " + d.result.reason;
+    if (d.reviewed) t += " [" + std::to_string(d.reviewsLeftAfter) + " review(s) left]";
+    Log(d.kind == DecisionKind::UmpireReferral ? "third-umpire" : (d.reviewed ? "review" : "decision"), t);
+    events_.back().decision = d;
+}
+
+Status MatchSession::FinishDecision(Status s, const DecisionRecord& d, const DeliveryRecord& ball) {
+    if (!s) return s;
+    LogDecision(d);
+    LogBall(ball);
+    return s;
+}
+
+Status MatchSession::ResolveAppeal(const DecisionCase& c) {
+    if (WaitingFor().what != "delivery") return Status::Err("not ready for a delivery");
+    EnsureLegalField();
+    DecisionRecord dec;
+    DeliveryRecord ball;
+    Status s = match_->Appeal(c, &dec, &ball);
+    if (!s) return s;
+    if (c.kind == DecisionKind::UmpireReferral) {
+        FinishDecision(s, dec, ball);
+    } else {
+        Log("appeal", std::string("Appeal for ") + ToString(c.mode) + ": on-field " +
+                          (c.onFieldOut ? "OUT" : "NOT OUT") + ". " + teams_[match_->ReviewEntitledSide()].name +
+                          " may review (" + std::to_string(match_->ReviewsRemaining(match_->ReviewEntitledSide())) +
+                          " left)");
+    }
     RunAi();
+    return s;
+}
+
+Status MatchSession::ExpireReviewWindow() {
+    if (!match_ || !match_->HasPendingDecision()) return Status::Err("no decision is pending");
+    DecisionRecord dec;
+    DeliveryRecord ball;
+    Status s = FinishDecision(match_->AcceptDecision(&dec, &ball), dec, ball);
+    if (s) RunAi();
     return s;
 }
 
@@ -252,6 +330,12 @@ void MatchSession::RunAi() {
             int b = ai_.ChooseBowler(*match_);
             s = b >= 0 ? match_->SetBowler(b) : Status::Err("AI found no legal bowler");
             if (s) fields_[p.side] = ai_.ChooseLegalField(*match_, teams_[p.side].xi[b].bowls);
+        } else if (p.what == "review") {
+            DecisionRecord dec;
+            DeliveryRecord ball;
+            s = FinishDecision(ai_.ShouldReview(*match_, p.side) ? match_->ReviewDecision(p.side, &dec, &ball)
+                                                                  : match_->AcceptDecision(&dec, &ball),
+                               dec, ball);
         } else if (p.what == "follow-on") {
             bool enforce = ai_.ShouldEnforceFollowOn(*match_);
             s = match_->DecideFollowOn(enforce);

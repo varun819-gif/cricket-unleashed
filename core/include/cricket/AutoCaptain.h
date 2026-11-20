@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <random>
 
 #include "cricket/FieldPlacement.h"
@@ -30,6 +31,9 @@ public:
     FieldSetup ChooseLegalField(const Match& m, BowlingKind kind) const;
     bool ShouldEnforceFollowOn(const Match& m);
     bool ShouldDeclare(const Match& m) const;
+    // Should `side` review the pending on-field decision? The AI "reads" the
+    // replay correctly with a probability that depends on difficulty.
+    bool ShouldReview(const Match& m, int side);
 
 private:
     std::mt19937_64 rng_;
@@ -41,8 +45,13 @@ public:
     explicit QuickSim(uint64_t seed) : rng_(seed) {}
     // Produces a legal delivery for the current state of the match.
     Delivery Next(const Match& m);
+    // Turns a close delivery into an appeal with replay evidence, as the
+    // physics/replay system will later do. Returns nullopt when there is
+    // nothing to appeal (the delivery is then bowled normally).
+    std::optional<DecisionCase> MakeCase(const Match& m, const Delivery& d);
 
 private:
+    LbwEvidence RandomLbw();
     double U() { return std::uniform_real_distribution<double>(0.0, 1.0)(rng_); }
     std::mt19937_64 rng_;
 };

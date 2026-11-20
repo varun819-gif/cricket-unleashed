@@ -71,6 +71,8 @@ public:
     Status SetBowler(int bowler);
     Status SetNextBatter(int batter);
     Status Bowl(const Delivery& d, DeliveryRecord* out = nullptr);
+    // Would this delivery be accepted right now (ignoring whose turn it is)?
+    Status Check(const Delivery& d) const;
     Status Declare();
     void ForceComplete();  // rain / time / match result reached elsewhere
 

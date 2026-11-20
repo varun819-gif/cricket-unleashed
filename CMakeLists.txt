@@ -20,6 +20,7 @@ add_library(cricket_core
   core/src/Match.cpp
   core/src/Toss.cpp
   core/src/Lbw.cpp
+  core/src/Drs.cpp
   core/src/FieldPlacement.cpp
   core/src/AutoCaptain.cpp
   core/src/Commentary.cpp
@@ -39,6 +40,7 @@ add_executable(cricket_tests
   core/tests/MatchTests.cpp
   core/tests/FieldTests.cpp
   core/tests/SessionTests.cpp
+  core/tests/DrsTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core)
 add_test(NAME cricket_tests COMMAND cricket_tests)
