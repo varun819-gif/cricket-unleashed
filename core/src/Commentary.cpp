@@ -59,6 +59,16 @@ const Pool& English() {
         {"thirdumpire.notout", {"NOT OUT says the third umpire!", "The big screen shows not out. Lucky escape!"}},
         {"noball.check", {"Hang on... it's a no-ball! Saved by the front foot.", "No-ball! The bowler overstepped, the wicket doesn't count."}},
         {"expert.review", {"The replays were clear: {reason}.", "Technology decides it: {reason}."}},
+        {"call.signalled", {"The umpire signals {call}.", "{call} called by the umpire."}},
+        {"call.notsignalled", {"The umpire doesn't call {call}.", "No {call} call from the umpire."}},
+        {"call.changed", {"Changed on review! The {call} call is reversed.", "The TV umpire reverses the {call} call."}},
+        {"call.stands", {"The {call} call stands.", "Call stays as it was."}},
+        {"boundary.check", {"The TV umpire checks the boundary...", "Upstairs to check the rope..."}},
+        {"boundary.six", {"Confirmed: that's a SIX!", "It cleared the rope. Six!"}},
+        {"boundary.four", {"Just short! Only a four.", "The fielder's foot touched the rope... it's four, not six."}},
+        {"penalty", {"Five penalty runs to {team}! {reason}.", "Penalty runs awarded to {team}: {reason}."}},
+        {"newball", {"{team} take the new ball.", "The new ball is out for {team}."}},
+        {"shortrun", {"One short! The umpire takes a run away.", "Short run called. That run won't count."}},
     };
     return p;
 }
@@ -99,9 +109,69 @@ const Pool& Hindi() {
         {"thirdumpire.out", {"बड़ी स्क्रीन पर आउट!", "तीसरे अंपायर ने आउट दिया!"}},
         {"thirdumpire.notout", {"तीसरे अंपायर का फ़ैसला: नॉट आउट!", "बाल-बाल बचे, नॉट आउट!"}},
         {"noball.check", {"रुकिए... ये नो-बॉल है! विकेट नहीं मिलेगा।"}},
-        {"expert.review", {"तकनीक ने साफ़ फ़ैसला कर दिया।", "रीप्ले में सब साफ़ दिख गया।"}},
+        {"expert.review", {"रीप्ले से साफ़ है: {reason}।", "तकनीक का फ़ैसला: {reason}।"}},
+        {"call.signalled", {"अंपायर ने {call} का इशारा किया।"}},
+        {"call.notsignalled", {"अंपायर ने {call} नहीं दिया।"}},
+        {"call.changed", {"रिव्यू में {call} का फ़ैसला पलट गया!"}},
+        {"call.stands", {"{call} का फ़ैसला बरकरार।"}},
+        {"boundary.check", {"तीसरे अंपायर बाउंड्री जाँच रहे हैं..."}},
+        {"boundary.six", {"पक्का हुआ: छक्का!"}},
+        {"boundary.four", {"रस्सी छू गई... छक्का नहीं, चौका!"}},
+        {"penalty", {"{team} को पाँच पेनल्टी रन! {reason}।"}},
+        {"newball", {"{team} ने नई गेंद ली।"}},
+        {"shortrun", {"एक रन छोटा! अंपायर ने एक रन काट दिया।"}},
     };
     return p;
+}
+
+// Hindi explanations for every DRS reason code.
+const char* ReasonHindi(ReasonCode r) {
+    switch (r) {
+        case ReasonCode::OnField: return "मैदानी अंपायर का फ़ैसला";
+        case ReasonCode::FrontFootNoBall: return "फ्रंट-फ़ुट नो-बॉल";
+        case ReasonCode::BallTracking: return "बॉल ट्रैकिंग";
+        case ReasonCode::UmpiresCall: return "अंपायर्स कॉल";
+        case ReasonCode::NoTrackingData: return "बॉल ट्रैकिंग डेटा नहीं, मैदानी फ़ैसला बरकरार";
+        case ReasonCode::BallGrounded: return "कैच से पहले गेंद ज़मीन से लगी";
+        case ReasonCode::CatchNotConclusive: return "साफ़ कैच साबित नहीं हुआ";
+        case ReasonCode::EdgeDetected: return "बल्ले का किनारा लगा";
+        case ReasonCode::NoEdge: return "बल्ला नहीं लगा";
+        case ReasonCode::NoEdgeButLbw: return "बल्ला नहीं लगा, लेकिन पगबाधा आउट";
+        case ReasonCode::NoEdgeLbwUmpiresCall: return "बल्ला नहीं लगा; पगबाधा अंपायर्स कॉल, नॉट आउट";
+        case ReasonCode::NoEdgeLbwNotOut: return "बल्ला नहीं लगा; पगबाधा भी नहीं";
+        case ReasonCode::EdgeInconclusive: return "सबूत पक्का नहीं, मैदानी फ़ैसला बरकरार";
+        case ReasonCode::ShortOfCrease: return "बल्लेबाज़ क्रीज़ से बाहर";
+        case ReasonCode::MadeGround: return "बल्लेबाज़ समय पर क्रीज़ में";
+        case ReasonCode::BenefitOfDoubt: return "संदेह का लाभ बल्लेबाज़ को";
+        case ReasonCode::NoBatInvolved: return "बल्ला शामिल नहीं";
+        case ReasonCode::CleanCatch: return "साफ़ कैच";
+        case ReasonCode::WicketBrokenByBatter: return "बल्लेबाज़ ने ख़ुद विकेट गिराया";
+        case ReasonCode::WicketNotBrokenByBatter: return "विकेट बल्लेबाज़ से नहीं गिरा";
+        case ReasonCode::WilfulObstruction: return "जान-बूझकर बाधा";
+        case ReasonCode::NotWilful: return "बाधा जान-बूझकर नहीं थी";
+        case ReasonCode::CallConfirmed: return "रीप्ले ने फ़ैसले की पुष्टि की";
+        case ReasonCode::CallReversed: return "रीप्ले में फ़ैसला ग़लत निकला";
+        case ReasonCode::CallInconclusive: return "पक्का नहीं, मैदानी फ़ैसला बरकरार";
+        case ReasonCode::NotReferable: return "यह फ़ैसला रेफ़र नहीं हो सकता";
+    }
+    return "";
+}
+
+const char* CallName(ScoringCall c, Language lang) {
+    if (lang == Language::Hindi) {
+        switch (c) {
+            case ScoringCall::Wide: return "वाइड";
+            case ScoringCall::HeightNoBall: return "नो-बॉल";
+            case ScoringCall::Boundary: return "बाउंड्री";
+            default: return "";
+        }
+    }
+    switch (c) {
+        case ScoringCall::Wide: return "wide";
+        case ScoringCall::HeightNoBall: return "no-ball";
+        case ScoringCall::Boundary: return "boundary";
+        default: return "";
+    }
 }
 
 std::string Fill(std::string s, const std::map<std::string, std::string>& vars) {
@@ -180,6 +250,7 @@ std::vector<CommentaryLine> CommentaryEngine::Describe(const Match& m, const Del
         else if (d.runs > 1) out.push_back(Pick("Lead", "runs", v));
         if (d.boundary && (rng_() % 3 == 0)) out.push_back(Pick("Expert", "expert.boundary", v));
     }
+    if (d.shortRuns > 0) out.push_back(Pick("Lead", "shortrun", v));
     if (d.extra == ExtraType::NoBall && m.Rules().freeHitOnNoBall && !r.inningsCompleted)
         out.push_back(Pick("Lead", "freehit", v));
     if (r.batterHundred) out.push_back(Pick("Lead", "hundred", v));
@@ -208,14 +279,34 @@ std::vector<CommentaryLine> CommentaryEngine::DescribeResult(const Match& m) {
     return {Pick("Lead", "result", {{"summary", m.Result().summary}})};
 }
 
+std::string CommentaryEngine::Reason(ReasonCode r) const {
+    return lang_ == Language::Hindi ? ReasonHindi(r) : ReasonText(r);
+}
+
 std::vector<CommentaryLine> CommentaryEngine::DescribeDecision(const Match& m, const DecisionRecord& d) {
     std::vector<CommentaryLine> out;
     const Innings& inn = m.AllInnings().at(d.inningsIndex);
-    const int entitled = d.onFieldOut ? inn.BattingSide() : 1 - inn.BattingSide();
+    int entitled = d.onFieldOut ? inn.BattingSide() : 1 - inn.BattingSide();
+    if (d.call != ScoringCall::None) entitled = d.onFieldCalled ? 1 - inn.BattingSide() : inn.BattingSide();
     std::map<std::string, std::string> v = {
         {"team", m.GetTeam(d.reviewed ? d.reviewingSide : entitled).name},
-        {"reason", d.result.reason},
+        {"reason", Reason(d.result.code)},
+        {"call", CallName(d.call, lang_)},
     };
+    if (d.call == ScoringCall::Boundary) {
+        out.push_back(Pick("Lead", "boundary.check", v));
+        out.push_back(Pick("Lead", d.result.finalCalled ? "boundary.six" : "boundary.four", v));
+        return out;
+    }
+    if (d.call != ScoringCall::None) {
+        out.push_back(Pick("Lead", d.onFieldCalled ? "call.signalled" : "call.notsignalled", v));
+        if (d.reviewed) {
+            out.push_back(Pick("Lead", "review.taken", v));
+            out.push_back(Pick("Lead", d.result.finalCalled != d.onFieldCalled ? "call.changed" : "call.stands", v));
+            out.push_back(Pick("Expert", "expert.review", v));
+        }
+        return out;
+    }
     if (d.kind == DecisionKind::PlayerAppeal) {
         out.push_back(Pick("Lead", d.onFieldOut ? "appeal.out" : "appeal.notout", v));
         if (d.reviewed) {
@@ -235,6 +326,14 @@ std::vector<CommentaryLine> CommentaryEngine::DescribeDecision(const Match& m, c
         out.push_back(Pick("Expert", "expert.review", v));
     }
     return out;
+}
+
+std::vector<CommentaryLine> CommentaryEngine::DescribePenalty(const Match& m, const PenaltyRecord& p) {
+    return {Pick("Lead", "penalty", {{"team", m.GetTeam(p.side).name}, {"reason", p.reason}})};
+}
+
+std::vector<CommentaryLine> CommentaryEngine::DescribeNewBall(const Match& m) {
+    return {Pick("Lead", "newball", {{"team", m.GetTeam(m.FieldingSide()).name}})};
 }
 
 }  // namespace cricket

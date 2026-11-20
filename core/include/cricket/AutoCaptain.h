@@ -12,6 +12,7 @@
 
 #include "cricket/FieldPlacement.h"
 #include "cricket/Match.h"
+#include "cricket/ReviewAI.h"
 #include "cricket/Toss.h"
 
 namespace cricket {
@@ -21,7 +22,9 @@ const char* ToString(Difficulty d);
 
 class AutoCaptain {
 public:
-    explicit AutoCaptain(uint64_t seed, Difficulty d = Difficulty::Medium) : rng_(seed), difficulty_(d) {}
+    explicit AutoCaptain(uint64_t seed, Difficulty d = Difficulty::Medium,
+                         ReviewPersonality p = ReviewPersonality::Balanced)
+        : rng_(seed), difficulty_(d), personality_(p) {}
 
     TossChoice ChooseAtToss(const MatchRules& r);
     std::pair<int, int> ChooseOpeners(const Match& m) const;
@@ -31,17 +34,17 @@ public:
     FieldSetup ChooseLegalField(const Match& m, BowlingKind kind) const;
     bool ShouldEnforceFollowOn(const Match& m);
     bool ShouldDeclare(const Match& m) const;
-    // Should `side` review the pending on-field decision?
-    // STOP-GAP: this looks at the true (simulated) DRS evidence and then makes
-    // deliberate random mistakes by difficulty. A real captain cannot see the
-    // replay first. To be replaced by a perception-based model that never
-    // reads DrsEvidence (see docs/DRS_DESIGN.md, "AI reviews"). Not suitable
-    // for ranked online play.
+    // Should `side` review the pending on-field decision? Decides from the
+    // players' perception (DecisionCase::perceived) and the match situation
+    // only, never from the TV evidence. Implemented in ReviewAI.cpp.
     bool ShouldReview(const Match& m, int side);
+    // Takes the new ball as soon as it is due (Test).
+    bool ShouldTakeNewBall(const Match& m) const;
 
 private:
     std::mt19937_64 rng_;
     Difficulty difficulty_;
+    ReviewPersonality personality_;
 };
 
 class QuickSim {
@@ -58,8 +61,12 @@ public:
 
 private:
     LbwEvidence RandomLbw();
+    // What each side's players believe, from the truth plus noise and bias
+    // (a stand-in for a real perception model; see DRS_DESIGN.md).
+    void Perceive(DecisionCase& c);
     double U() { return std::uniform_real_distribution<double>(0.0, 1.0)(rng_); }
     std::mt19937_64 rng_;
+    int battingSide_ = 0;
 };
 
 }  // namespace cricket

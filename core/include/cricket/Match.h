@@ -14,6 +14,15 @@ namespace cricket {
 
 enum class MatchPhase { InProgress, AwaitingFollowOnDecision, Complete };
 
+// Law 41 penalty runs (5 by default), e.g. ball strikes a fielder's helmet
+// on the ground, illegal fielding, fielder wilfully obstructing a batter.
+struct PenaltyRecord {
+    int side = -1;           // side awarded the runs
+    int runs = 0;
+    int inningsIndex = -1;   // innings the runs were added to (-1 = waiting for that side's next innings)
+    std::string reason;
+};
+
 struct MatchResult {
     enum class Kind { None, Win, Tie, Draw, NoResult } kind = Kind::None;
     enum class Margin { None, Runs, Wickets, InningsAndRuns } margin = Margin::None;
@@ -26,7 +35,7 @@ class Match {
 public:
     // Throws std::invalid_argument if a team is not a valid XI.
     Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst);
-    // Innings keep a pointer to rules_, so a Match must stay where it was built.
+    // A Match is a single live object (sessions and saves refer to it).
     Match(const Match&) = delete;
     Match& operator=(const Match&) = delete;
 
@@ -57,6 +66,15 @@ public:
     int ReviewsRemaining(int side) const { return reviewsLeft_.at(side); }
     const std::vector<DecisionRecord>& Decisions() const { return decisions_; }
 
+    // ---- Penalty runs and the new ball -----------------------------------
+    // Law 41: runs to the batting side go into the current innings; runs to
+    // the fielding side go into its most recent innings, or its next innings
+    // if it has not batted yet (Law 41.17). Targets are updated.
+    Status AwardPenaltyRuns(int side, int runs, const std::string& reason);
+    const std::vector<PenaltyRecord>& Penalties() const { return penalties_; }
+    // Fielding captain takes the new ball (Test: after 80 overs).
+    Status TakeNewBall();
+
     // Test only: the side that batted first decides after innings 2.
     Status DecideFollowOn(bool enforce);
     // Time ran out (Test) or the game was called off.
@@ -85,6 +103,7 @@ private:
     void FinishWithChase(const Innings& chase, int target);
     std::string Name(int side) const { return teams_[side].name; }
     int TotalLegalBallsInMatch() const;
+    void RecomputeTarget();
 
     MatchRules rules_;
     std::array<Team, 2> teams_;
@@ -96,6 +115,8 @@ private:
     std::optional<DecisionCase> pending_;
     std::array<int, 2> reviewsLeft_{0, 0};
     std::vector<DecisionRecord> decisions_;
+    std::vector<PenaltyRecord> penalties_;
+    std::array<int, 2> pendingPenalty_{0, 0};
 };
 
 }  // namespace cricket

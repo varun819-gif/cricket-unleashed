@@ -36,6 +36,7 @@ enum class CommandType {
     Declare,
     FollowOn,        // a = 1 enforce / 0 bat again
     Review,          // a = 1 review the pending decision / 0 accept it
+    TakeNewBall,     // fielding captain, when the new ball is due (Test)
 };
 
 struct Command {
@@ -78,6 +79,8 @@ public:
     Status ResolveAppeal(const DecisionCase& c);
     // Server-side: the review timer ran out, so the on-field call stands.
     Status ExpireReviewWindow();
+    // Umpires award Law 41 penalty runs (server-side; never from a client).
+    Status AwardPenaltyRuns(int side, int runs, const std::string& reason);
 
     // ---- Server clock (drives the DRS review timer) ---------------------
     // The server calls Tick() with its monotonic clock (ms) before handling

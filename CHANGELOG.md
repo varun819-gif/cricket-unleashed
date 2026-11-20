@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0] - 2026-11-20 - Rules milestone, Stage A: DRS completed
+
+### Added
+- Hit-wicket reviews and referrals. Obstructing-the-field referrals (still
+  out off a no-ball).
+- Scoring-call decisions: wide and height no-ball reviews (ruleset flag
+  `reviewWidesAndNoBalls`, name suffix `:calls`) and TV boundary checks.
+- Reason codes for every DRS decision, explained in English and **Hindi**.
+- Perception-based AI reviews (`ReviewAI`): belief × value vs cost,
+  personalities, difficulty = judgement noise. Never reads the evidence
+  (enforced by a source-scan test).
+- Short runs (Law 18.4), penalty runs (Law 41) with target recomputation,
+  new ball after 80 overs (Test), AI takes the new ball.
+- `MatchRules::Scaled(overs)`. Each innings keeps its own copy of the rules
+  (preparing for rain-reduced innings).
+- Session: `TakeNewBall` command, `AwardPenaltyRuns`, events `penalty` and
+  `new-ball`. Commentary for calls, boundary checks, penalties, new ball and
+  short runs.
+
 ## [0.2.1] - 2026-11-20 - Step 1 DRS: review corrections
 
 ### Fixed

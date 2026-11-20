@@ -31,6 +31,10 @@ public:
     std::vector<CommentaryLine> DescribeResult(const Match& m);
     // Appeals, DRS reviews and third-umpire referrals.
     std::vector<CommentaryLine> DescribeDecision(const Match& m, const DecisionRecord& d);
+    std::vector<CommentaryLine> DescribePenalty(const Match& m, const PenaltyRecord& p);
+    std::vector<CommentaryLine> DescribeNewBall(const Match& m);
+    // A DRS reason in this engine's language.
+    std::string Reason(ReasonCode r) const;
 
 private:
     CommentaryLine Pick(const std::string& speaker, const std::string& category,

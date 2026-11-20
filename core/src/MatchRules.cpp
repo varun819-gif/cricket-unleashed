@@ -34,14 +34,19 @@ bool DrsRules::FromName(const std::string& name, DrsRules* out) {
     if (name == "icc") return *out = Icc(), true;
     if (name == "no-reviews") return *out = NoPlayerReviews(), true;
     if (name == "no-tech") return *out = NoTechnology(), true;
-    int reviews = 0, seconds = 0;
-    char lose[8] = {0};
-    int n = std::sscanf(name.c_str(), "custom:%d:%d:%7s", &reviews, &seconds, lose);
-    if (n >= 2 && reviews >= 0 && reviews <= 10 && seconds >= 0 && seconds <= 120) {
-        *out = Custom(reviews, seconds, std::string(lose) != "lose");
-        return true;
+    int reviews = 0, seconds = 0, used = 0;
+    if (std::sscanf(name.c_str(), "custom:%d:%d%n", &reviews, &seconds, &used) < 2) return false;
+    if (reviews < 0 || reviews > 10 || seconds < 0 || seconds > 120) return false;
+    bool lose = false, calls = false;
+    std::string rest = name.substr(static_cast<size_t>(used));
+    while (!rest.empty()) {
+        if (rest.rfind(":lose", 0) == 0) lose = true, rest = rest.substr(5);
+        else if (rest.rfind(":calls", 0) == 0) calls = true, rest = rest.substr(6);
+        else return false;
     }
-    return false;
+    *out = Custom(reviews, seconds, !lose);
+    out->reviewWidesAndNoBalls = calls;
+    return true;
 }
 
 MatchRules MatchRules::T20() {
@@ -74,6 +79,7 @@ MatchRules MatchRules::Test(int days) {
     r.followOnLead = days >= 5 ? 200 : days >= 3 ? 150 : 100;
     r.matchOverLimit = days * 90;
     r.defaultMaxOutsideCircle = -1;
+    r.newBallAfterOvers = 80;
     return r;
 }
 
@@ -87,6 +93,26 @@ MatchRules MatchRules::Custom(int overs) {
     int pp = std::max(1, (r.oversPerInnings * 3 + 9) / 10);
     r.phases = {{1, pp, 2}};
     r.defaultMaxOutsideCircle = 5;
+    return r;
+}
+
+MatchRules MatchRules::Scaled(int overs) const {
+    MatchRules r = *this;
+    if (oversPerInnings <= 0 || overs <= 0) return r;
+    const int full = oversPerInnings;
+    r.oversPerInnings = overs;
+    if (maxOversPerBowler > 0) r.maxOversPerBowler = std::max(1, (overs + 4) / 5);
+    // Each phase keeps its share of the innings: boundaries scale with the
+    // overs and are rounded to the nearest over (at least 1 over long).
+    r.phases.clear();
+    int prevLast = 0;
+    for (const auto& p : phases) {
+        int last = static_cast<int>(static_cast<double>(p.lastOver) * overs / full + 0.5);
+        last = std::min(overs, std::max(prevLast + 1, last));
+        if (prevLast >= overs) break;
+        r.phases.push_back({prevLast + 1, last, p.maxOutsideCircle});
+        prevLast = last;
+    }
     return r;
 }
 

@@ -1,5 +1,6 @@
 #include "cricket/Innings.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <utility>
 
@@ -47,7 +48,7 @@ bool CreditedToBowler(Dismissal d) {
 }
 
 Innings::Innings(const MatchRules& rules, int battingSide, int index, std::optional<int> target)
-    : rules_(&rules),
+    : rules_(rules),
       battingSide_(battingSide),
       index_(index),
       target_(target),
@@ -88,7 +89,7 @@ InningsState Innings::State() const {
 
 Status Innings::SetOpeners(int striker, int nonStriker) {
     if (openersSet_) return Status::Err("openers already set");
-    const int n = rules_->squadSize;
+    const int n = rules_.squadSize;
     if (striker < 0 || striker >= n || nonStriker < 0 || nonStriker >= n)
         return Status::Err("opener index out of range");
     if (striker == nonStriker) return Status::Err("openers must be different players");
@@ -100,10 +101,10 @@ Status Innings::SetOpeners(int striker, int nonStriker) {
 }
 
 bool Innings::CanBowlNextOver(int bowler) const {
-    if (bowler < 0 || bowler >= rules_->squadSize) return false;
+    if (bowler < 0 || bowler >= rules_.squadSize) return false;
     if (bowler == lastOverBowler_) return false;  // no consecutive overs
-    if (rules_->maxOversPerBowler > 0 &&
-        bowlers_[bowler].legalBalls / rules_->ballsPerOver >= rules_->maxOversPerBowler)
+    if (rules_.maxOversPerBowler > 0 &&
+        bowlers_[bowler].legalBalls / rules_.ballsPerOver >= rules_.maxOversPerBowler)
         return false;
     return true;
 }
@@ -112,7 +113,7 @@ Status Innings::SetBowler(int bowler) {
     if (IsComplete()) return Status::Err("innings is complete");
     if (!openersSet_) return Status::Err("set openers first");
     if (bowler_ >= 0) return Status::Err("an over is already in progress");
-    if (bowler < 0 || bowler >= rules_->squadSize) return Status::Err("bowler index out of range");
+    if (bowler < 0 || bowler >= rules_.squadSize) return Status::Err("bowler index out of range");
     if (bowler == lastOverBowler_) return Status::Err("a bowler cannot bowl consecutive overs");
     if (!CanBowlNextOver(bowler)) return Status::Err("bowler has used the maximum overs allowed");
     bowler_ = bowler;
@@ -122,7 +123,7 @@ Status Innings::SetBowler(int bowler) {
 
 Status Innings::SetNextBatter(int batter) {
     if (!needBatter_) return Status::Err("no batter is needed");
-    if (batter < 0 || batter >= rules_->squadSize) return Status::Err("batter index out of range");
+    if (batter < 0 || batter >= rules_.squadSize) return Status::Err("batter index out of range");
     if (batters_[batter].batted) return Status::Err("that player has already batted");
     batters_[batter].batted = true;
     if (striker_ < 0) striker_ = batter;
@@ -132,7 +133,7 @@ Status Innings::SetNextBatter(int batter) {
 }
 
 Status Innings::Declare() {
-    if (rules_->oversPerInnings != 0) return Status::Err("declarations are only allowed in unlimited-overs cricket");
+    if (rules_.oversPerInnings != 0) return Status::Err("declarations are only allowed in unlimited-overs cricket");
     if (IsComplete()) return Status::Err("innings is complete");
     if (!openersSet_) return Status::Err("innings has not started");
     end_ = InningsEnd::Declared;
@@ -150,8 +151,8 @@ void Innings::ForceComplete() {
 void Innings::CheckCompletion() {
     if (end_ != InningsEnd::None) return;
     if (target_ && total_ >= *target_) end_ = InningsEnd::TargetReached;
-    else if (wickets_ >= rules_->squadSize - 1) end_ = InningsEnd::AllOut;
-    else if (rules_->oversPerInnings > 0 && legalBalls_ >= rules_->oversPerInnings * rules_->ballsPerOver)
+    else if (wickets_ >= rules_.squadSize - 1) end_ = InningsEnd::AllOut;
+    else if (rules_.oversPerInnings > 0 && legalBalls_ >= rules_.oversPerInnings * rules_.ballsPerOver)
         end_ = InningsEnd::OversComplete;
     if (end_ != InningsEnd::None) {
         needBatter_ = false;
@@ -161,6 +162,8 @@ void Innings::CheckCompletion() {
 
 Status Innings::Check(const Delivery& d) const {
     if (d.runs < 0 || d.runs > 7) return Status::Err("runs out of range");
+    if (d.shortRuns < 0 || d.shortRuns > d.runs) return Status::Err("short runs must be between 0 and the runs attempted");
+    if (d.shortRuns > 0 && d.boundary) return Status::Err("a boundary cannot include short runs");
     if (d.noBallRunsAs != ExtraType::None) {
         if (d.extra != ExtraType::NoBall) return Status::Err("noBallRunsAs only applies to a no-ball");
         if (d.noBallRunsAs != ExtraType::Bye && d.noBallRunsAs != ExtraType::LegBye)
@@ -214,6 +217,7 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
     const int before = bat.runs;
     int charged = 0;  // runs charged to the bowler on this ball
 
+    const int scored = d.runs - d.shortRuns;  // Law 18.4: short runs don't count
     auto creditBat = [&](int r) {
         bat.runs += r;
         rec.runsToBatter = r;
@@ -223,13 +227,13 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
 
     switch (d.extra) {
         case ExtraType::None:
-            creditBat(d.runs);
+            creditBat(scored);
             bat.balls++;
-            charged = d.runs;
-            rec.runsToTeam = d.runs;
+            charged = scored;
+            rec.runsToTeam = scored;
             break;
         case ExtraType::Wide: {
-            int w = rules_->widePenalty + d.runs;
+            int w = rules_.widePenalty + scored;
             extras_.wides += w;
             bowl.wides++;
             charged = w;
@@ -239,30 +243,30 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
         case ExtraType::NoBall:
             // Law 21.12: penalty is a no-ball extra; runs off the bat go to the
             // striker; other runs are byes / leg-byes. The striker has faced it.
-            extras_.noBalls += rules_->noBallPenalty;
+            extras_.noBalls += rules_.noBallPenalty;
             bat.balls++;
             bowl.noBalls++;
             if (d.noBallRunsAs == ExtraType::Bye) {
-                extras_.byes += d.runs;
-                charged = rules_->noBallPenalty;
+                extras_.byes += scored;
+                charged = rules_.noBallPenalty;
             } else if (d.noBallRunsAs == ExtraType::LegBye) {
-                extras_.legByes += d.runs;
-                charged = rules_->noBallPenalty;
+                extras_.legByes += scored;
+                charged = rules_.noBallPenalty;
             } else {
-                creditBat(d.runs);
-                charged = rules_->noBallPenalty + d.runs;
+                creditBat(scored);
+                charged = rules_.noBallPenalty + scored;
             }
-            rec.runsToTeam = rules_->noBallPenalty + d.runs;
+            rec.runsToTeam = rules_.noBallPenalty + scored;
             break;
         case ExtraType::Bye:
-            extras_.byes += d.runs;
+            extras_.byes += scored;
             bat.balls++;
-            rec.runsToTeam = d.runs;
+            rec.runsToTeam = scored;
             break;
         case ExtraType::LegBye:
-            extras_.legByes += d.runs;
+            extras_.legByes += scored;
             bat.balls++;
-            rec.runsToTeam = d.runs;
+            rec.runsToTeam = scored;
             break;
     }
     bowl.runs += charged;
@@ -271,11 +275,12 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
     rec.batterFifty = before < 50 && bat.runs >= 50 && bat.runs < 100;
     rec.batterHundred = before < 100 && bat.runs >= 100;
 
-    // Batters cross on odd runs completed by running (not on boundaries).
+    // Batters cross on odd runs attempted by running (not on boundaries);
+    // a short run still changes ends (Law 18.4).
     if (!d.boundary && (d.runs % 2) == 1) std::swap(striker_, nonStriker_);
 
     // Free hit follows a no-ball; it carries over a wide.
-    if (d.extra == ExtraType::NoBall) freeHit_ = rules_->freeHitOnNoBall;
+    if (d.extra == ExtraType::NoBall) freeHit_ = rules_.freeHitOnNoBall;
     else if (d.extra != ExtraType::Wide) freeHit_ = false;
 
     if (d.dismissal != Dismissal::None) {
@@ -309,7 +314,7 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
             bowler_ = -1;
         }
     }
-    rec.ballInOver = rec.overCompleted ? rules_->ballsPerOver : BallsInOver();
+    rec.ballInOver = rec.overCompleted ? rules_.ballsPerOver : BallsInOver();
 
     CheckCompletion();
     rec.totalAfter = total_;
@@ -317,6 +322,45 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
     rec.inningsCompleted = IsComplete();
     balls_.push_back(rec);
     if (out) *out = rec;
+    return Status::Ok();
+}
+
+Status Innings::AddPenaltyRuns(int runs) {
+    if (runs <= 0) return Status::Err("penalty runs must be positive");
+    extras_.penalty += runs;
+    total_ += runs;
+    CheckCompletion();
+    return Status::Ok();
+}
+
+void Innings::SetTarget(std::optional<int> target) {
+    target_ = target;
+    CheckCompletion();
+}
+
+Status Innings::SetMaxOvers(int overs) {
+    if (rules_.oversPerInnings == 0) return Status::Err("unlimited-overs innings cannot be shortened");
+    if (IsComplete()) return Status::Err("innings is complete");
+    const int started = CompletedOvers() + (BallsInOver() > 0 ? 1 : 0);
+    if (overs < std::max(1, started))
+        return Status::Err("cannot reduce below the " + std::to_string(std::max(1, started)) + " over(s) already started");
+    rules_ = rules_.Scaled(overs);
+    CheckCompletion();
+    return Status::Ok();
+}
+
+bool Innings::NewBallDue() const {
+    return rules_.newBallAfterOvers > 0 && !IsComplete() && BallsInOver() == 0 &&
+           OversWithCurrentBall() >= rules_.newBallAfterOvers;
+}
+
+Status Innings::TakeNewBall() {
+    if (rules_.newBallAfterOvers <= 0) return Status::Err("no new ball in this format");
+    if (IsComplete()) return Status::Err("innings is complete");
+    if (BallsInOver() != 0) return Status::Err("a new ball can only be taken between overs");
+    if (OversWithCurrentBall() < rules_.newBallAfterOvers)
+        return Status::Err("the new ball is due after " + std::to_string(rules_.newBallAfterOvers) + " overs");
+    newBallAtOver_ = CompletedOvers();
     return Status::Ok();
 }
 
@@ -328,16 +372,16 @@ std::string Innings::ScoreString() const {
 
 double Innings::RunRate() const {
     if (legalBalls_ == 0) return 0.0;
-    return static_cast<double>(total_) * rules_->ballsPerOver / legalBalls_;
+    return static_cast<double>(total_) * rules_.ballsPerOver / legalBalls_;
 }
 
 double Innings::RequiredRunRate() const {
-    if (!target_ || rules_->oversPerInnings == 0) return -1.0;
-    int ballsLeft = rules_->oversPerInnings * rules_->ballsPerOver - legalBalls_;
+    if (!target_ || rules_.oversPerInnings == 0) return -1.0;
+    int ballsLeft = rules_.oversPerInnings * rules_.ballsPerOver - legalBalls_;
     int need = *target_ - total_;
     if (need <= 0) return 0.0;
     if (ballsLeft <= 0) return -1.0;
-    return static_cast<double>(need) * rules_->ballsPerOver / ballsLeft;
+    return static_cast<double>(need) * rules_.ballsPerOver / ballsLeft;
 }
 
 }  // namespace cricket

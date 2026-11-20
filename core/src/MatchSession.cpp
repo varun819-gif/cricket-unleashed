@@ -16,6 +16,7 @@ std::string BallText(const Match& m, const DeliveryRecord& r) {
     const Delivery& d = r.delivery;
     if (d.extra != ExtraType::None) s += std::string(ToString(d.extra)) + " ";
     if (d.noBallRunsAs != ExtraType::None && d.runs > 0) s += std::string("+ ") + ToString(d.noBallRunsAs) + "s ";
+    if (d.shortRuns > 0) s += "(" + std::to_string(d.shortRuns) + " short) ";
     if (d.dismissal != Dismissal::None) s += std::string("OUT ") + ToString(d.dismissal) + " (" + bat.xi[r.dismissedBatter].name + ") ";
     if (d.boundary) s += d.runs == 6 ? "SIX" : "FOUR";
     else s += std::to_string(r.runsToTeam) + (r.runsToTeam == 1 ? " run" : " runs");
@@ -202,6 +203,13 @@ Status MatchSession::Apply(int side, const Command& c) {
             return FinishDecision(c.a ? match_->ReviewDecision(side, &dec, &ball) : match_->AcceptDecision(&dec, &ball),
                                   dec, ball);
         }
+        case CommandType::TakeNewBall:
+            if (!match_ || match_->Phase() != MatchPhase::InProgress) return Status::Err("no innings in progress");
+            if (side != match_->FieldingSide()) return Status::Err("only the fielding captain takes the new ball");
+            if (!(s = match_->TakeNewBall())) return s;
+            Log("new-ball", teams_[side].name + " take the new ball after " +
+                                std::to_string(match_->Current().CompletedOvers()) + " overs");
+            return s;
         case CommandType::FollowOn:
             if (!(s = mustBe("follow-on", p.side))) return s;
             if (!(s = match_->DecideFollowOn(c.a != 0))) return s;
@@ -245,6 +253,18 @@ const char* OutcomeText(ReviewOutcome o) {
 void MatchSession::LogDecision(const DecisionRecord& d) {
     std::string t;
     const bool onFieldOnly = d.result.outcome == ReviewOutcome::NotReviewed;
+    if (d.call != ScoringCall::None) {
+        t = std::string(d.kind == DecisionKind::UmpireReferral ? "TV check (" : "Call (") + ToString(d.call) +
+            "), on-field " + (d.onFieldCalled ? "signalled" : "not signalled") + ". ";
+        if (d.reviewed) t += teams_[d.reviewingSide].name + " review: " + OutcomeText(d.result.outcome) + ". ";
+        t += d.result.finalCalled ? "Call stands as signalled" : "Not given";
+        if (d.result.finalCalled != d.onFieldCalled) t += " (changed)";
+        t += " - " + d.result.reason;
+        if (d.reviewed) t += " [" + std::to_string(d.reviewsLeftAfter) + " review(s) left]";
+        Log(d.reviewed ? "review" : (d.kind == DecisionKind::UmpireReferral && !onFieldOnly ? "third-umpire" : "decision"), t);
+        events_.back().decision = d;
+        return;
+    }
     if (d.kind == DecisionKind::UmpireReferral && onFieldOnly) {
         t = std::string("On-field decision, no third umpire (") + ToString(d.appealedFor) + "): ";
     } else if (d.kind == DecisionKind::UmpireReferral) {
@@ -283,8 +303,11 @@ Status MatchSession::ResolveAppeal(const DecisionCase& c) {
     } else if (match_->HasPendingDecision()) {
         const int secs = match_->Rules().drs.reviewTimerSeconds;
         if (secs > 0) reviewDeadlineMs_ = nowMs_ + static_cast<int64_t>(secs) * 1000;
-        Log("appeal", std::string("Appeal for ") + ToString(c.mode) + ": on-field " +
-                          (c.onFieldOut ? "OUT" : "NOT OUT") + ". " + teams_[match_->ReviewEntitledSide()].name +
+        const std::string what = c.call != ScoringCall::None
+                                     ? std::string(ToString(c.call)) + " call: " + (c.onFieldCalled ? "signalled" : "not signalled")
+                                     : std::string("Appeal for ") + ToString(c.mode) + ": on-field " +
+                                           (c.onFieldOut ? "OUT" : "NOT OUT");
+        Log("appeal", what + ". " + teams_[match_->ReviewEntitledSide()].name +
                           " may review (" + std::to_string(match_->ReviewsRemaining(match_->ReviewEntitledSide())) +
                           " left" + (secs > 0 ? ", " + std::to_string(secs) + " seconds" : std::string()) + ")");
     } else {
@@ -293,6 +316,17 @@ Status MatchSession::ResolveAppeal(const DecisionCase& c) {
     }
     RunAi();
     return s;
+}
+
+Status MatchSession::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
+    if (!match_) return Status::Err("match has not started");
+    if (Status s = match_->AwardPenaltyRuns(side, runs, reason); !s) return s;
+    const auto& p = match_->Penalties().back();
+    Log("penalty", std::to_string(runs) + " penalty runs to " + teams_[side].name + " (" + reason + ")" +
+                       (p.inningsIndex < 0 ? ", added when they bat" : ""));
+    AfterMatchChange();
+    RunAi();
+    return Status::Ok();
 }
 
 Status MatchSession::TimeOutReview() {
@@ -365,6 +399,9 @@ void MatchSession::RunAi() {
         } else if (p.what == "batter") {
             s = match_->SetNextBatter(ai_.ChooseNextBatter(*match_));
         } else if (p.what == "bowler") {
+            if (ai_.ShouldTakeNewBall(*match_) && match_->TakeNewBall())
+                Log("new-ball", teams_[p.side].name + " take the new ball after " +
+                                    std::to_string(match_->Current().CompletedOvers()) + " overs");
             int b = ai_.ChooseBowler(*match_);
             s = b >= 0 ? match_->SetBowler(b) : Status::Err("AI found no legal bowler");
             if (s) fields_[p.side] = ai_.ChooseLegalField(*match_, teams_[p.side].xi[b].bowls);

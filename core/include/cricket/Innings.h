@@ -27,6 +27,11 @@ struct Delivery {
     // bat (scored as byes / leg-byes, not charged to the bowler). The one-run
     // no-ball penalty is always added on top.
     ExtraType noBallRunsAs = ExtraType::None;
+    // Law 18.4: runs the umpire called "one short" (a batter did not ground
+    // their bat or body behind the crease when turning). Those runs are not
+    // scored, but the batters still end up where they ran to (strike follows
+    // `runs`). Must be 0..runs and 0 on a boundary.
+    int shortRuns = 0;
 };
 
 struct BatterCard {
@@ -42,7 +47,8 @@ struct BowlerCard {
 
 struct Extras {
     int wides = 0, noBalls = 0, byes = 0, legByes = 0;
-    int Total() const { return wides + noBalls + byes + legByes; }
+    int penalty = 0;  // Law 41 penalty runs awarded to this batting side
+    int Total() const { return wides + noBalls + byes + legByes + penalty; }
 };
 
 // Everything a presenter (UI, commentary, replay, network) needs about one ball.
@@ -81,6 +87,23 @@ public:
     Status Declare();
     void ForceComplete();  // rain / time / match result reached elsewhere
 
+    // ---- Adjustments made by the match (rain, penalties, new ball) -------
+    // Law 41 penalty runs to this batting side (allowed after the innings
+    // has ended, e.g. awarded to a side that has already batted).
+    Status AddPenaltyRuns(int runs);
+    // Revised target (rain rule, penalty runs to the fielding side). Ends the
+    // innings at once if the total already reaches it.
+    void SetTarget(std::optional<int> target);
+    // Rain: change this innings' length. Cannot go below the overs already
+    // started. Bowler limits and powerplays are rescaled (see MatchRules::Scaled).
+    Status SetMaxOvers(int overs);
+    // Law 4: a new ball may be taken once `newBallAfterOvers` overs have been
+    // bowled with the current ball, between overs.
+    bool NewBallDue() const;
+    Status TakeNewBall();
+    int OversWithCurrentBall() const { return CompletedOvers() - newBallAtOver_; }
+    const MatchRules& Rules() const { return rules_; }
+
     // Is this dismissal possible on this kind of ball (and on a free hit)?
     static bool DismissalAllowed(Dismissal d, ExtraType e, bool freeHit);
 
@@ -92,8 +115,9 @@ public:
     int Total() const { return total_; }
     int Wickets() const { return wickets_; }
     int LegalBalls() const { return legalBalls_; }
-    int CompletedOvers() const { return legalBalls_ / rules_->ballsPerOver; }
-    int BallsInOver() const { return legalBalls_ % rules_->ballsPerOver; }
+    int CompletedOvers() const { return legalBalls_ / rules_.ballsPerOver; }
+    int BallsInOver() const { return legalBalls_ % rules_.ballsPerOver; }
+    int MaxOvers() const { return rules_.oversPerInnings; }  // 0 = unlimited
     int CurrentOverNumber() const { return CompletedOvers() + 1; }  // 1-based
     std::optional<int> Target() const { return target_; }
     int Striker() const { return striker_; }
@@ -114,7 +138,7 @@ public:
 private:
     void CheckCompletion();
 
-    const MatchRules* rules_;
+    MatchRules rules_;  // this innings' own copy (rain can change its length)
     int battingSide_;
     int index_;
     std::optional<int> target_;
@@ -128,6 +152,7 @@ private:
     bool needBatter_ = false;
     bool freeHit_ = false;
     int overRunsVsBowler_ = 0;
+    int newBallAtOver_ = 0;
     InningsEnd end_ = InningsEnd::None;
 };
 

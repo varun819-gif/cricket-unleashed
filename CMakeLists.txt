@@ -21,6 +21,7 @@ add_library(cricket_core
   core/src/Toss.cpp
   core/src/Lbw.cpp
   core/src/Drs.cpp
+  core/src/ReviewAI.cpp
   core/src/FieldPlacement.cpp
   core/src/AutoCaptain.cpp
   core/src/Commentary.cpp
@@ -43,6 +44,9 @@ add_executable(cricket_tests
   core/tests/DrsTests.cpp
   core/tests/NoBallTests.cpp
   core/tests/DrsConfigTests.cpp
+  core/tests/DrsCompleteTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core)
+# Lets tests read source files (information-hiding scan of the AI code).
+target_compile_definitions(cricket_tests PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME cricket_tests COMMAND cricket_tests)

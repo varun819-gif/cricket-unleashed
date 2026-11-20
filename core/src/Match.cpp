@@ -37,6 +37,12 @@ Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
 void Match::StartInnings(int side, std::optional<int> target) {
     innings_.emplace_back(rules_, side, static_cast<int>(innings_.size()), target);
     phase_ = MatchPhase::InProgress;
+    if (pendingPenalty_[side] > 0) {  // Law 41.17: awarded before this side batted
+        innings_.back().AddPenaltyRuns(pendingPenalty_[side]);
+        for (auto& p : penalties_)
+            if (p.side == side && p.inningsIndex < 0) p.inningsIndex = innings_.back().Index();
+        pendingPenalty_[side] = 0;
+    }
     const int reviews = rules_.drs.playerReviews ? rules_.drs.reviewsPerInnings : 0;
     reviewsLeft_ = {reviews, reviews};  // fresh reviews each innings
     pending_.reset();
@@ -206,21 +212,82 @@ void Match::Advance() {
 
 int Match::ReviewEntitledSide() const {
     if (!pending_) return -1;
-    // The side the on-field call went against may review it.
+    // The side the on-field call went against may review it. A wide or
+    // no-ball call helps the batting side, so the fielders may challenge it.
+    if (pending_->call != ScoringCall::None) return pending_->onFieldCalled ? FieldingSide() : BattingSide();
     return pending_->onFieldOut ? BattingSide() : FieldingSide();
 }
 
+Status Match::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
+    if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+    if (pending_) return Status::Err("a decision is pending");
+    if (side != 0 && side != 1) return Status::Err("side must be 0 or 1");
+    if (runs <= 0 || runs > 20) return Status::Err("penalty runs must be between 1 and 20");
+    PenaltyRecord rec{side, runs, -1, reason};
+    if (side == Current().BattingSide()) {
+        Current().AddPenaltyRuns(runs);
+        rec.inningsIndex = Current().Index();
+    } else {
+        int last = -1;
+        for (const auto& i : innings_)
+            if (i.BattingSide() == side) last = i.Index();
+        if (last >= 0) {
+            innings_[last].AddPenaltyRuns(runs);
+            rec.inningsIndex = last;
+            RecomputeTarget();
+        } else {
+            pendingPenalty_[side] += runs;
+        }
+    }
+    penalties_.push_back(rec);
+    if (phase_ == MatchPhase::InProgress && Current().IsComplete()) Advance();
+    return Status::Ok();
+}
+
+void Match::RecomputeTarget() {
+    Innings& cur = Current();
+    if (!cur.Target() || cur.IsComplete()) return;
+    const int chasing = cur.BattingSide();
+    int theirs = 0, ours = 0;
+    for (const auto& i : innings_) {
+        if (i.Index() == cur.Index()) continue;
+        (i.BattingSide() == chasing ? ours : theirs) += i.Total();
+    }
+    cur.SetTarget(theirs - ours + 1);
+}
+
+Status Match::TakeNewBall() {
+    if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
+    if (pending_) return Status::Err("a decision is pending");
+    return Current().TakeNewBall();
+}
+
 Status Match::ValidateCase(const DecisionCase& c) const {
+    const Innings& inn = Current();
+    if (c.call != ScoringCall::None) {
+        if (c.kind == DecisionKind::PlayerAppeal && !IsPlayerReviewable(c.call))
+            return Status::Err(std::string("players cannot review a ") + ToString(c.call) + " call");
+        if (c.kind == DecisionKind::UmpireReferral && !IsUmpireReferable(c.call))
+            return Status::Err(std::string("umpires do not refer a ") + ToString(c.call) + " call");
+        if (c.ifCalled.dismissal != Dismissal::None || c.ifNotCalled.dismissal != Dismissal::None)
+            return Status::Err("a scoring-call review cannot include a dismissal");
+        if (c.call == ScoringCall::Wide && c.ifCalled.extra != ExtraType::Wide)
+            return Status::Err("ifCalled must be a wide");
+        if (c.call == ScoringCall::HeightNoBall && c.ifCalled.extra != ExtraType::NoBall)
+            return Status::Err("ifCalled must be a no-ball");
+        if (Status s = inn.Check(c.ifCalled); !s) return Status::Err("ifCalled: " + s.error);
+        if (Status s = inn.Check(c.ifNotCalled); !s) return Status::Err("ifNotCalled: " + s.error);
+        return Status::Ok();
+    }
     if (c.mode == Dismissal::None) return Status::Err("appeal needs a mode of dismissal");
     if (c.kind == DecisionKind::PlayerAppeal && !IsPlayerReviewable(c.mode))
-        return Status::Err(std::string("players appeal for caught or LBW; ") + ToString(c.mode) +
+        return Status::Err(std::string("players review caught, LBW or hit wicket; ") + ToString(c.mode) +
                            " is referred by the umpires");
     if (c.kind == DecisionKind::UmpireReferral && !IsUmpireReferable(c.mode))
         return Status::Err(std::string("umpires do not refer ") + ToString(c.mode));
     if (c.mode == Dismissal::Lbw && !c.evidence.lbw) return Status::Err("an LBW appeal needs ball-tracking evidence");
     if (c.ifOut.dismissal != c.mode) return Status::Err("ifOut must record the appealed mode of dismissal");
     if (c.ifNotOut.dismissal != Dismissal::None) return Status::Err("ifNotOut must not contain a dismissal");
-    const Innings& inn = Current();
     if (Status s = inn.Check(c.ifOut); !s) return Status::Err("ifOut: " + s.error);
     if (Status s = inn.Check(c.ifNotOut); !s) return Status::Err("ifNotOut: " + s.error);
     if (c.mode == Dismissal::Caught && c.evidence.lbw) {
@@ -245,8 +312,11 @@ Status Match::Appeal(const DecisionCase& c, DecisionRecord* decision, DeliveryRe
         if (!rules_.drs.thirdUmpire) return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
         return ApplyDecision(JudgeReferral(*pending_), false, -1, decision, ball);
     }
-    // No player reviews in this competition: the on-field call is final.
-    if (!rules_.drs.playerReviews) return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
+    // No player reviews in this competition (or not for this kind of call):
+    // the on-field call is final.
+    const bool reviewable = rules_.drs.playerReviews &&
+                            (c.call == ScoringCall::None || rules_.drs.reviewWidesAndNoBalls);
+    if (!reviewable) return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
     if (decision) *decision = {};
     return Status::Ok();
 }
@@ -255,7 +325,7 @@ Status Match::ReviewDecision(int side, DecisionRecord* decision, DeliveryRecord*
     if (!pending_) return Status::Err("there is no decision to review");
     const int entitled = ReviewEntitledSide();
     if (side != entitled)
-        return Status::Err(std::string("only the ") + (pending_->onFieldOut ? "batting" : "fielding") +
+        return Status::Err(std::string("only the ") + (entitled == BattingSide() ? "batting" : "fielding") +
                            " side can review this decision");
     if (!rules_.drs.playerReviews) return Status::Err("player reviews are not used in this competition");
     if (reviewsLeft_[side] <= 0) return Status::Err("no reviews left this innings");
@@ -280,6 +350,8 @@ Status Match::ApplyDecision(const DrsOutcome& o, bool reviewed, int side, Decisi
     rec.kind = c.kind;
     rec.appealedFor = c.mode;
     rec.onFieldOut = c.onFieldOut;
+    rec.call = c.call;
+    rec.onFieldCalled = c.onFieldCalled;
     rec.reviewed = reviewed;
     rec.reviewingSide = side;
     rec.result = o;

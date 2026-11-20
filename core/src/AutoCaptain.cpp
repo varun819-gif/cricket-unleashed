@@ -111,25 +111,7 @@ bool AutoCaptain::ShouldDeclare(const Match& m) const {
     return inn.Total() >= 600;
 }
 
-bool AutoCaptain::ShouldReview(const Match& m, int side) {
-    const DecisionCase* c = m.PendingDecision();
-    if (!c || m.ReviewEntitledSide() != side || m.ReviewsRemaining(side) <= 0) return false;
-    const bool wouldWin = JudgeReview(*c).outcome == ReviewOutcome::Overturned;
-    double accuracy = 0.75;
-    switch (difficulty_) {
-        case Difficulty::Beginner: accuracy = 0.55; break;
-        case Difficulty::Easy: accuracy = 0.65; break;
-        case Difficulty::Medium: accuracy = 0.75; break;
-        case Difficulty::Hard: accuracy = 0.85; break;
-        case Difficulty::WorldClass: accuracy = 0.92; break;
-        case Difficulty::Adaptive: accuracy = 0.8; break;
-    }
-    std::uniform_real_distribution<double> u(0.0, 1.0);
-    bool thinksWin = u(rng_) < accuracy ? wouldWin : !wouldWin;
-    // With the last review, only go upstairs when quite sure.
-    if (thinksWin && m.ReviewsRemaining(side) == 1 && u(rng_) < 0.3) thinksWin = false;
-    return thinksWin;
-}
+bool AutoCaptain::ShouldTakeNewBall(const Match& m) const { return m.Current().NewBallDue(); }
 
 LbwEvidence QuickSim::RandomLbw() {
     LbwEvidence e;
@@ -145,9 +127,32 @@ LbwEvidence QuickSim::RandomLbw() {
     return e;
 }
 
+void QuickSim::Perceive(DecisionCase& c) {
+    // The truth as the TV umpire would find it on review (the simulator is
+    // the "world", so it may look; the AI never does).
+    const DrsOutcome truth = JudgeReview(c);
+    const bool isDismissal = c.call == ScoringCall::None;
+    const bool happened = isDismissal ? truth.finalOut : truth.finalCalled;
+    std::normal_distribution<double> noise(0.0, 0.18);
+    for (int side = 0; side < 2; ++side) {
+        const bool batting = side == battingSide_;
+        double p = (happened ? 0.72 : 0.28) + noise(rng_);
+        // Optimism bias: fielders lean towards "out", batters towards
+        // "not out"; for wide / no-ball calls the bias is reversed.
+        double bias = batting ? -0.05 : 0.08;
+        p += isDismissal ? bias : -bias;
+        c.perceived[side] = std::clamp(p, 0.02, 0.98);
+    }
+}
+
 std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d) {
     const Innings& inn = m.Current();
+    battingSide_ = m.BattingSide();
     DecisionCase c;
+    auto done = [&]() -> std::optional<DecisionCase> {
+        Perceive(c);
+        return c;
+    };
     c.evidence.frontFootNoBall = d.extra == ExtraType::None && U() < 0.02;
     c.ifOut = d;
     switch (d.dismissal) {
@@ -162,7 +167,7 @@ std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d
             const bool truth = c.evidence.batContact == Evidence::Yes && c.evidence.groundedBeforeCatch == Evidence::No;
             c.onFieldOut = c.evidence.batContact == Evidence::Inconclusive ? U() < 0.5 : (U() < 0.88 ? truth : !truth);
             c.ifNotOut = Delivery{};
-            return c;
+            return done();
         }
         case Dismissal::Lbw: {
             c.kind = DecisionKind::PlayerAppeal;
@@ -171,7 +176,16 @@ std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d
             const bool truth = LbwIsOut(*c.evidence.lbw);
             c.onFieldOut = U() < 0.85 ? truth : !truth;
             c.ifNotOut = Delivery{};
-            return c;
+            return done();
+        }
+        case Dismissal::HitWicket: {
+            c.kind = DecisionKind::PlayerAppeal;
+            c.mode = Dismissal::HitWicket;
+            double w = U();
+            c.evidence.wicketBrokenByBatter = w < 0.9 ? Evidence::Yes : w < 0.97 ? Evidence::No : Evidence::Inconclusive;
+            c.onFieldOut = U() < 0.9 ? c.evidence.wicketBrokenByBatter != Evidence::No : U() < 0.5;
+            c.ifNotOut = Delivery{};
+            return done();
         }
         case Dismissal::Stumped:
         case Dismissal::RunOut: {
@@ -183,26 +197,69 @@ std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d
             c.onFieldOut = U() < 0.85 ? c.evidence.batterGrounded == Evidence::No : U() < 0.5;
             c.ifNotOut = d;
             c.ifNotOut.dismissal = Dismissal::None;
-            return c;
+            return done();
         }
         case Dismissal::None:
-            // A loud shout for LBW on a dot ball.
-            if (d.extra == ExtraType::None && d.runs == 0 && !inn.NextBallIsFreeHit() && U() < 0.04) {
-                c.kind = DecisionKind::PlayerAppeal;
-                c.mode = Dismissal::Lbw;
-                c.evidence.lbw = RandomLbw();
-                if (U() < 0.5) c.evidence.lbw->wickets = WicketsZone::Missing;
-                const bool truth = LbwIsOut(*c.evidence.lbw);
-                c.onFieldOut = U() < 0.9 ? truth : !truth;
-                c.ifOut = Delivery{};
-                c.ifOut.dismissal = Dismissal::Lbw;
-                c.ifNotOut = d;
-                return c;
-            }
-            return std::nullopt;
+            break;
         default:
             return std::nullopt;
     }
+    c.evidence.frontFootNoBall = false;
+    // A loud shout for LBW on a dot ball.
+    if (d.extra == ExtraType::None && d.runs == 0 && !inn.NextBallIsFreeHit() && U() < 0.04) {
+        c.kind = DecisionKind::PlayerAppeal;
+        c.mode = Dismissal::Lbw;
+        c.evidence.lbw = RandomLbw();
+        if (U() < 0.5) c.evidence.lbw->wickets = WicketsZone::Missing;
+        const bool truth = LbwIsOut(*c.evidence.lbw);
+        c.onFieldOut = U() < 0.9 ? truth : !truth;
+        c.ifOut = Delivery{};
+        c.ifOut.dismissal = Dismissal::Lbw;
+        c.ifNotOut = d;
+        return done();
+    }
+    auto evidenceOfCall = [&](double yes, double no) {
+        double e = U();
+        c.evidence.callTrue = e < yes ? Evidence::Yes : e < yes + no ? Evidence::No : Evidence::Inconclusive;
+    };
+    // A wide that might not have been one.
+    if (d.extra == ExtraType::Wide && U() < 0.15) {
+        c.kind = DecisionKind::PlayerAppeal;
+        c.call = ScoringCall::Wide;
+        c.onFieldCalled = true;
+        c.ifCalled = d;
+        c.ifNotCalled = Delivery{};
+        if (d.runs > 0) {  // the runs would have been byes off a fair ball
+            c.ifNotCalled.extra = ExtraType::Bye;
+            c.ifNotCalled.runs = d.runs;
+            c.ifNotCalled.boundary = d.boundary;
+        }
+        evidenceOfCall(0.8, 0.15);
+        return done();
+    }
+    // A full toss called for height.
+    if (d.extra == ExtraType::NoBall && d.noBallRunsAs == ExtraType::None && d.shortRuns == 0 && U() < 0.3) {
+        c.kind = DecisionKind::PlayerAppeal;
+        c.call = ScoringCall::HeightNoBall;
+        c.onFieldCalled = true;
+        c.ifCalled = d;
+        c.ifNotCalled = d;
+        c.ifNotCalled.extra = ExtraType::None;
+        evidenceOfCall(0.75, 0.2);
+        return done();
+    }
+    // Did that clear the rope, or did the fielder touch it?
+    if (d.boundary && d.runs == 6 && d.extra == ExtraType::None && U() < 0.1) {
+        c.kind = DecisionKind::UmpireReferral;
+        c.call = ScoringCall::Boundary;
+        c.onFieldCalled = true;
+        c.ifCalled = d;
+        c.ifNotCalled = d;
+        c.ifNotCalled.runs = 4;
+        evidenceOfCall(0.85, 0.1);
+        return done();
+    }
+    return std::nullopt;
 }
 
 Delivery QuickSim::Next(const Match& m) {
@@ -284,7 +341,10 @@ Delivery QuickSim::Next(const Match& m) {
     if ((y -= p6) < 0) d.runs = 6, d.boundary = true;
     else if ((y -= p4) < 0) d.runs = 4, d.boundary = true;
     else if ((y -= p3) < 0) d.runs = 3;
-    else if ((y -= p2) < 0) d.runs = 2;
+    else if ((y -= p2) < 0) {
+        d.runs = 2;
+        if (U() < 0.03) d.shortRuns = 1;  // umpire calls one short (Law 18.4)
+    }
     else if ((y -= p1) < 0) d.runs = 1;
     else d.runs = 0;
     return d;

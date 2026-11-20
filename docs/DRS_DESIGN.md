@@ -29,16 +29,23 @@ Tests: `core/tests/DrsTests.cpp`, `DrsConfigTests.cpp`, `NoBallTests.cpp`.
 > So the DRS **rules** are tested and reliable. The DRS **evidence** is a
 > stand-in until the physics exists.
 
-## Two paths to the TV umpire
+## Ways a close call reaches the TV umpire
 
 | Path | Used for | Who starts it | Uses a team review? |
 |---|---|---|---|
-| **Player review** | Caught, LBW | the side the on-field call went against | yes, if unsuccessful |
-| **Umpire referral** | Run out, stumping, clean-catch check | the umpires | never |
+| **Player review** of a dismissal | Caught, LBW, hit wicket | the side the on-field call went against | yes, if unsuccessful |
+| **Umpire referral** of a dismissal | Run out, stumping, clean catch, hit wicket, obstructing the field | the umpires | never |
+| **Player review** of a scoring call | Wide, above-waist (height) no-ball (only if `reviewWidesAndNoBalls`) | the side the call went against (wide called → fielders) | yes, if unsuccessful |
+| **Umpire referral** of a scoring call | Boundary check (six or four? did the fielder touch the rope?) | the umpires | never |
 
-On **every** decision the TV umpire also checks for a **front-foot no-ball**.
-It cancels any dismissal except a run out, even when nobody reviews. (This
-only happens when the competition has a third umpire.)
+On every **dismissal** decision the TV umpire also checks for a **front-foot
+no-ball**, when the competition has a third umpire. It cancels any dismissal
+except run out and obstructing the field (Law 21.18).
+
+Approximation: in this game run outs and stumpings are always *referred* by
+the umpires, so players can't review them. That matches normal practice at
+international level, but the ICC playing conditions also let players review
+those decisions if the umpires don't refer them.
 
 ## Rulesets (configurable per competition)
 
@@ -51,13 +58,14 @@ only happens when the competition has a third umpire.)
 | `reviewsPerInnings` | **unsuccessful** reviews per side per innings | 2 |
 | `umpiresCallRetainsReview` | umpire's call does not cost a review | true |
 | `reviewTimerSeconds` | time to ask for a review (0 = no timer) | 15 |
+| `reviewWidesAndNoBalls` | players may review wide and height no-ball calls | false |
 
 Presets: `DrsRules::Icc()`, `NoPlayerReviews()` (TV umpire only),
 `NoTechnology()` (on-field umpires decide everything), and
 `Custom(reviews, seconds, umpiresCallRetains)`. Config files and the
 simulator use names: `icc`, `no-reviews`, `no-tech`,
-`custom:<reviews>:<seconds>[:lose]` (for example
-`cricket_sim --drs custom:1:10:lose`).
+`custom:<reviews>:<seconds>[:lose][:calls]` (for example
+`cricket_sim --drs custom:1:10:lose:calls`).
 
 The presets describe *kinds* of setups, not any real tournament's playing
 conditions. Each real competition's numbers should be checked against its
@@ -134,6 +142,19 @@ stands.
 **Clean catch (referral)**: needs bat contact and the ball not grounded. Any
 doubt → NOT OUT.
 
+**Hit wicket (review or referral, Law 35)**: did the batter break the wicket
+while playing at the ball or setting off for the first run? Review:
+inconclusive → on-field call stands. Referral: doubt → NOT OUT.
+
+**Obstructing the field (referral, Law 37)**: out only if the obstruction was
+wilful. Not wilful or not sure → NOT OUT. Possible off a no-ball.
+
+**Scoring calls**: replays say the event happened (Yes), didn't (No), or
+can't tell (Inconclusive → the on-field call stands, and a player review is
+lost). A wide that is overturned becomes a fair ball (it counts in the over).
+A height no-ball that is overturned removes the penalty and the free hit. A
+boundary check can turn a signalled six into a four.
+
 **Review counts**: `reviewsPerInnings` unsuccessful reviews per side, reset
 at the start of every innings.
 
@@ -162,47 +183,36 @@ In every case the striker is credited with a ball faced, the ball is not
 legal, and the next ball is a free hit (limited overs). A six can only come
 off the bat.
 
-## AI reviews: current limitations and replacement plan
+## AI reviews (perception-based)
 
-**How it works today (a stop-gap).** `AutoCaptain::ShouldReview` calls the
-real judge (`JudgeReview`) on the true evidence to find out whether a review
-would succeed. Then it adds deliberate mistakes: it "reads the replay"
-correctly 55% (Beginner) to 92% (World Class) of the time, and holds back
-more with its last review.
+**How it works** (`core/src/ReviewAI.cpp`):
+1. **Belief, not truth.** For every appeal the server's perception model
+   fills `DecisionCase::perceived[side]`: how likely each side's players
+   think it is that the batter is out (or that the call is true). Today the
+   placeholder model (`QuickSim::Perceive`) starts from the true answer and
+   adds noise (standard deviation 0.18) and optimism bias (fielders lean
+   towards "out", batters towards "not out"). It points the right way on
+   average but varies from appeal to appeal.
+2. **Decision value.** The AI reviews when
+   *belief × value of success > (1 − belief) × cost of losing a review*.
+   Value grows with batter quality and runs scored, and shrinks for
+   tail-enders and the last two overs. Cost grows as reviews run out and
+   with how much of the innings is left. For a wide / no-ball call, the
+   value is the runs (and extra ball) at stake.
+3. **Personalities.** Cautious (cost × 1.4), Balanced, Gambler (cost × 0.6).
+4. **Difficulty** blurs the AI's own judgement of its players' belief:
+   Beginner ±0.30 … World Class ±0.03 (standard deviation).
+5. **Guard-rail.** `drsc_ai_review_code_never_reads_evidence` scans
+   `ReviewAI.cpp` and fails if it mentions the evidence, any judge function or
+   the simulator. `drsc_ai_decision_ignores_evidence_and_follows_belief`
+   checks that flipping the evidence while keeping the beliefs the same never
+   changes the AI's choice.
 
-**Why that is not good enough:**
-1. **It peeks at hidden information.** The AI effectively sees the replay
-   before deciding. No real captain can. The error rate hides this, but the
-   AI's mistakes are random coin flips, not believable misjudgements.
-2. **No context.** It ignores the match situation (a key batter vs a
-   tail-ender, last over of a chase), how many reviews are left (beyond a
-   simple rule), and who is asking (bowlers are famously over-optimistic,
-   keepers are better judges).
-3. **Same personality for everyone.** All AI captains review the same way.
-4. **Fairness in multiplayer.** In a human vs AI match, the AI's review
-   quality comes from information the human player doesn't have.
-
-**Replacement plan** (once ball physics exists, Milestones 4-5):
-1. **Belief, not truth.** Each fielder and batter gets a *perception* of the
-   ball. It is built only from what that person could see or hear: their
-   position and angle, the ball's speed, the deflection they saw, a "sound"
-   cue for edges. It includes noise based on their skill and distance. The
-   AI decides from this belief and never reads `DrsEvidence` at all.
-2. **Who advises the captain.** Combine the bowler's view (optimistic bias),
-   the keeper's view (better line, less bias) and the batter's own feel (for
-   batting reviews).
-3. **Decision value.** Review when *P(success) × value of the wicket* is
-   greater than *the cost of losing a review*, given reviews left, overs
-   left, batter quality and match pressure.
-4. **Personalities.** Cautious, balanced and gambler captains. Difficulty
-   changes perception noise, not dice.
-5. **Guard-rail.** A test will check that the AI review code never
-   includes or calls the evidence-judging functions. Information hiding gets
-   enforced, not just promised.
-
-Until then, the current AI is clearly marked in code and in KNOWN_ISSUES.md.
-It is fine for single-player testing, but it must not be used for ranked
-online play.
+**Remaining limitation:** the perception *model* is a placeholder. It is
+built from the truth plus noise, not from what each player could physically
+see. When ball physics exists, `Perceive` will be replaced by one built from
+player positions, viewing angles and the ball's path. The AI code itself
+won't need to change.
 
 ## Multiplayer
 
@@ -212,5 +222,21 @@ online play.
   the entitled side, inside the time window, with sequence-number
   duplicate protection.
 - Events: `appeal` (includes the timer length), `review`, `decision`,
-  `third-umpire`, `review-timeout`. Each carries a `DecisionRecord` for
+  `third-umpire`, `review-timeout`, `penalty`, `new-ball`. Each carries a `DecisionRecord` for
   replays and commentary. Both players see the same events.
+
+## Related scoring laws added with DRS
+
+- **Short runs (Law 18.4)**: `Delivery::shortRuns`. Those runs are not
+  scored (bat, byes, leg-byes, wides or no-ball runs), but the batters' ends
+  follow the runs *attempted*. Not allowed on a boundary. Deliberate short
+  running (Law 18.5, penalty runs) is an umpire decision. The server applies
+  it through penalty runs.
+- **Penalty runs (Law 41)**: `Match::AwardPenaltyRuns(side, runs, reason)`
+  (server/umpire only). To the batting side → current innings. To the
+  fielding side → its most recent innings, or its next innings if it hasn't
+  batted yet (Law 41.17). Targets are recomputed, and penalty runs can win a
+  match. Shown as `extras.penalty`.
+- **New ball (Law 4 / Test playing conditions)**: `TakeNewBall()` between
+  overs once 80 overs have been bowled with the current ball. The AI takes it
+  as soon as it is due. Human captains use the `TakeNewBall` command.

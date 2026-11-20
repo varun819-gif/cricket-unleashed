@@ -24,6 +24,7 @@ struct DrsRules {
     int reviewsPerInnings = 2;             // UNSUCCESSFUL reviews allowed per side per innings
     bool umpiresCallRetainsReview = true;  // "umpire's call" does not cost a review
     int reviewTimerSeconds = 15;           // time to ask for a review; 0 = no timer
+    bool reviewWidesAndNoBalls = false;    // players may review wide / height no-ball calls
 
     // International standard playing conditions (2 per innings, umpire's call
     // keeps the review, 15-second timer).
@@ -33,7 +34,8 @@ struct DrsRules {
     // No technology at all: on-field umpires decide everything.
     static DrsRules NoTechnology();
     static DrsRules Custom(int reviewsPerInnings, int reviewTimerSeconds, bool umpiresCallRetainsReview = true);
-    // "icc", "no-reviews", "no-tech" or "custom:<reviews>:<seconds>[:lose]".
+    // "icc", "no-reviews", "no-tech" or "custom:<reviews>:<seconds>[:lose][:calls]"
+    // (":lose" = umpire's call costs a review, ":calls" = wides / height no-balls reviewable).
     static bool FromName(const std::string& name, DrsRules* out);
 };
 
@@ -52,6 +54,7 @@ struct MatchRules {
     int squadSize = 11;
     std::vector<FieldingPhase> phases;
     int defaultMaxOutsideCircle = 5;  // -1 = unrestricted
+    int newBallAfterOvers = 0;    // Test: 80 (Law 4.3 / playing conditions); 0 = never
 
     static MatchRules T20();
     static MatchRules ODI();
@@ -62,6 +65,10 @@ struct MatchRules {
     // Max fielders allowed outside the 30-yard circle for a 1-based over number.
     // Returns -1 when there is no restriction.
     int MaxOutsideCircle(int overNumber) const;
+    // The same limited-overs rules for an innings of `overs` overs (rain):
+    // bowler limit = one fifth of the overs rounded up; fielding phases
+    // shrink in proportion (see docs/RAIN_RULE.md for the approximation).
+    MatchRules Scaled(int overs) const;
     bool IsPowerplay(int overNumber) const;
 };
 
