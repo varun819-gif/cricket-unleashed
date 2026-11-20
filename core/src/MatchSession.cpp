@@ -628,6 +628,22 @@ Status MatchSession::LoseRestOfDay() {
 Status MatchSession::AbandonMatch() {
     return Record(In(InputType::Abandon), [&] { return AbandonMatchImpl(); });
 }
+Status MatchSession::ReleaseSide(int side) {
+    SessionInput in = In(InputType::Release);
+    in.a = side;
+    return Record(std::move(in), [&] { return ReleaseSideImpl(side); });
+}
+
+Status MatchSession::ReleaseSideImpl(int side) {
+    if (side != 0 && side != 1) return Status::Err("side must be 0 or 1");
+    if (humans_[side].empty()) return Status::Err("that side is already played by the AI");
+    Log("ai-takeover", teams_[side].name + ": the AI captain takes over");
+    humans_[side].clear();
+    ready_[side] = true;
+    if (paused_ && ready_[0] && ready_[1]) Resume();
+    RunAi();
+    return Status::Ok();
+}
 
 Status MatchSession::Replay(const SessionInput& in) {
     switch (in.type) {
@@ -645,6 +661,7 @@ Status MatchSession::Replay(const SessionInput& in) {
         case InputType::ReduceOvers: return ReduceOvers(in.a, in.b);
         case InputType::LoseDay: return LoseRestOfDay();
         case InputType::Abandon: return AbandonMatch();
+        case InputType::Release: return ReleaseSide(in.a);
     }
     return Status::Err("unknown input");
 }

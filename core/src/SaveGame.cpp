@@ -362,7 +362,7 @@ bool ParseInput(const std::string& line, SessionInput* x, std::string* err) {
         return false;
     }
     x->ok = in.B();
-    x->type = in.Enum<InputType>(static_cast<int>(InputType::Abandon));
+    x->type = in.Enum<InputType>(static_cast<int>(InputType::Release));
     x->text = in.S();
     x->a = static_cast<int>(in.I(-1000000, 1000000));
     x->b = static_cast<int>(in.I(-1000000, 1000000));

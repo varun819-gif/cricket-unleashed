@@ -266,10 +266,10 @@ TEST(save_rejects_damaged_edited_and_foreign_files) {
 
     // Newer format, wrong kind.
     std::string newer = good;
-    newer.replace(newer.find(" match 2\n"), 9, " match 3\n");
+    newer.replace(newer.find(" match 3\n"), 9, " match 4\n");
     CHECK(LoadMatch(Reseal(newer)).status.error.find("newer") != std::string::npos);
     std::string session = good;
-    session.replace(session.find(" match 2\n"), 9, " session 2\n");
+    session.replace(session.find(" match 3\n"), 9, " session 3\n");
     CHECK(LoadMatch(Reseal(session)).status.error.find("session") != std::string::npos);
 
     // Impossible rules in the header are refused before anything is built.
@@ -290,7 +290,7 @@ TEST(save_version_1_files_still_load) {
     d.Run(m, 80);
     std::string text = SaveMatch(m);
     std::string v1 = text;
-    v1.replace(v1.find(" match 2\n"), 9, " match 1\n");
+    v1.replace(v1.find(" match 3\n"), 9, " match 1\n");
     // Drop the new field: it follows the wide/no-ball review flag in the rules line.
     const size_t rl = v1.find("\nrules ");
     const size_t end = v1.find('\n', rl + 1);

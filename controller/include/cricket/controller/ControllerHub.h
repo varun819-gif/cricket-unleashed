@@ -78,6 +78,7 @@ struct ControllerAction {
     Role role = Role::Spectator;
     int64_t id = 0;   // the phone's action number (monotonic, survives reconnects)
     Json action;
+    int64_t receivedMs = 0;  // server/TV time it arrived (for timing checks)
 };
 
 struct HubEvent {
@@ -86,13 +87,41 @@ struct HubEvent {
     std::string detail;
 };
 
+// Where a match gets its players' controls from and sends their screens to.
+// Local play: ControllerHub (phones on the Wi-Fi). Online play: the online
+// server's per-match channel. MatchHost works with either.
+class ControlChannel {
+public:
+    virtual ~ControlChannel() = default;
+    virtual std::vector<DeviceInfo> Devices() const = 0;
+    virtual std::vector<ControllerAction> TakeActions() = 0;
+    virtual std::vector<HubEvent> TakeEvents() = 0;
+    virtual void Ack(const std::string& device, int64_t actionId, bool ok, const std::string& error = "") = 0;
+    virtual bool SendTo(const std::string& device, const Json& body) = 0;
+    virtual void Broadcast(int side, const Json& body) = 0;
+    // Round-trip time to that device in ms (-1 = unknown). Used to judge
+    // online batting timing on the server.
+    virtual int64_t RttMs(const std::string& device) const { (void)device; return -1; }
+};
+
 struct Outgoing {
     ConnId conn = 0;
     std::string text;
     bool close = false;  // close the socket after sending
 };
 
-class ControllerHub {
+// What the web server feeds WebSocket traffic into (the phone hub, or the
+// online game server).
+class ConnectionSink {
+public:
+    virtual ~ConnectionSink() = default;
+    virtual std::optional<ConnId> Open(int64_t nowMs) = 0;
+    virtual void Receive(ConnId conn, const std::string& text, int64_t nowMs) = 0;
+    virtual void Closed(ConnId conn, int64_t nowMs) = 0;
+    virtual std::vector<Outgoing> TakeOutbox() = 0;
+};
+
+class ControllerHub : public ControlChannel, public ConnectionSink {
 public:
     explicit ControllerHub(HubConfig cfg = {}, RandomSource rnd = SystemRandom());
 
@@ -104,12 +133,12 @@ public:
     bool IsPending(const std::string& pairId) const { return pairings_.count(pairId) > 0; }
     // Sends a message body to one phone / to every connected phone of a side
     // (side -2 = everyone). Bodies are JSON objects.
-    bool SendTo(const std::string& device, const Json& body);
-    void Broadcast(int side, const Json& body);
+    bool SendTo(const std::string& device, const Json& body) override;
+    void Broadcast(int side, const Json& body) override;
     // Tells the phone whether its action was accepted.
-    void Ack(const std::string& device, int64_t actionId, bool ok, const std::string& error = "");
+    void Ack(const std::string& device, int64_t actionId, bool ok, const std::string& error = "") override;
     Status Revoke(const std::string& device);
-    std::vector<DeviceInfo> Devices() const;
+    std::vector<DeviceInfo> Devices() const override;
     const DeviceInfo* Device(const std::string& id) const;
 
     // Paired devices survive a TV/game restart: export their keys to local
@@ -118,14 +147,14 @@ public:
     Status ImportDevices(const std::string& text);
 
     // ---- transport side -------------------------------------------------
-    std::optional<ConnId> Open(int64_t nowMs);  // nullopt: too many connections
-    void Receive(ConnId conn, const std::string& text, int64_t nowMs);
-    void Closed(ConnId conn, int64_t nowMs);
+    std::optional<ConnId> Open(int64_t nowMs) override;  // nullopt: too many connections
+    void Receive(ConnId conn, const std::string& text, int64_t nowMs) override;
+    void Closed(ConnId conn, int64_t nowMs) override;
     void Tick(int64_t nowMs);
 
-    std::vector<Outgoing> TakeOutbox();
-    std::vector<ControllerAction> TakeActions();
-    std::vector<HubEvent> TakeEvents();
+    std::vector<Outgoing> TakeOutbox() override;
+    std::vector<ControllerAction> TakeActions() override;
+    std::vector<HubEvent> TakeEvents() override;
 
 private:
     struct Pairing {

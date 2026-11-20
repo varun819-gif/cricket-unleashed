@@ -26,11 +26,14 @@ struct ServerConfig {
     size_t maxHttpBytes = 8192;
     size_t maxFrameBytes = 16384;
     size_t maxClients = 32;
+    // URL path -> (file path, content type). Relative file paths are looked
+    // up in webRoot. Empty = the phone-controller files (Routes()).
+    std::map<std::string, std::pair<std::string, std::string>> routes;
 };
 
 class LocalServer {
 public:
-    LocalServer(ControllerHub& hub, ServerConfig cfg);
+    LocalServer(ConnectionSink& hub, ServerConfig cfg);
     ~LocalServer();
     LocalServer(const LocalServer&) = delete;
     LocalServer& operator=(const LocalServer&) = delete;
@@ -72,7 +75,7 @@ private:
     void Drop(int fd, int64_t now);
     void Flush(Client& c);
 
-    ControllerHub& hub_;
+    ConnectionSink& hub_;
     ServerConfig cfg_;
     int listenFd_ = -1;
     int port_ = 0;

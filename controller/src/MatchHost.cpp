@@ -18,15 +18,36 @@ const char* kSpinVariations[] = {"stock", "offbreak", "legbreak", "googly", "arm
 
 }  // namespace
 
-MatchHost::MatchHost(MatchRules rules, std::array<Team, 2> teams, ControllerHub& hub, HostConfig cfg)
+MatchHost::MatchHost(MatchRules rules, std::array<Team, 2> teams, ControlChannel& hub, HostConfig cfg)
     : hub_(hub),
       cfg_(cfg),
-      session_(std::move(rules), std::move(teams), cfg.seed),
+      session_(std::make_unique<MatchSession>(std::move(rules), std::move(teams), cfg.seed)),
       sim_(cfg.seed * 31 + 7),
       rng_(cfg.seed * 17 + 3) {
     for (int s = 0; s < 2; ++s)
-        if (cfg_.human[s]) session_.Join(PlayerId(s), s);
-    session_.RunAi();  // an AI side may need to call the toss
+        if (cfg_.human[s]) session_->Join(PlayerId(s), s);
+    session_->RunAi();  // an AI side may need to call the toss
+}
+
+MatchHost::MatchHost(std::unique_ptr<MatchSession> recovered, ControlChannel& hub, HostConfig cfg, uint64_t resumeSalt)
+    : hub_(hub),
+      cfg_(cfg),
+      session_(std::move(recovered)),
+      sim_(cfg.seed * 31 + 7 + resumeSalt),
+      rng_(cfg.seed * 17 + 3 + resumeSalt) {
+    // Continue the command numbers after those already in the journal.
+    for (const auto& in : session_->Inputs())
+        if (in.type == InputType::Submit || in.type == InputType::SubmitAt)
+            for (int s = 0; s < 2; ++s)
+                if (in.command.player == PlayerId(s)) seq_[s] = std::max<uint64_t>(seq_[s], in.command.seq);
+}
+
+Status MatchHost::HandToAi(int side) {
+    if (side != 0 && side != 1) return Status::Err("side must be 0 or 1");
+    if (!cfg_.human[side]) return Status::Err("already played by the AI");
+    cfg_.human[side] = false;
+    stage_.clear();  // restart the current ball with the AI
+    return session_->ReleaseSide(side);
 }
 
 bool MatchHost::SideConnected(int side) const {
@@ -36,7 +57,7 @@ bool MatchHost::SideConnected(int side) const {
 }
 
 int MatchHost::WaitingForController() const {
-    if (session_.WaitingFor().what == "none") return -1;
+    if (session_->WaitingFor().what == "none") return -1;
     for (int s = 0; s < 2; ++s)
         if (cfg_.human[s] && !SideConnected(s)) return s;
     return -1;
@@ -49,13 +70,13 @@ Status MatchHost::Submit(int side, CommandType t, int a, int b, int64_t now) {
     c.type = t;
     c.a = a;
     c.b = b;
-    return session_.SubmitAt(c, now);
+    return session_->SubmitAt(c, now);
 }
 
 std::vector<std::string> MatchHost::AllowedControls(int side, Role role) const {
     std::vector<std::string> out;
     if (role == Role::Spectator || side < 0 || !cfg_.human[side]) return out;
-    const Pending p = session_.WaitingFor();
+    const Pending p = session_->WaitingFor();
     if (p.what == "interval") out.push_back("ready");
     if (role == Role::Captain && p.side == side) {
         if (p.what == "toss-call") out.push_back("toss-call");
@@ -69,8 +90,8 @@ std::vector<std::string> MatchHost::AllowedControls(int side, Role role) const {
         }
         if (p.what == "follow-on") out.push_back("follow-on");
     }
-    if (!session_.HasMatch() || session_.GetMatch().Phase() != MatchPhase::InProgress) return out;
-    const Match& m = session_.GetMatch();
+    if (!session_->HasMatch() || session_->GetMatch().Phase() != MatchPhase::InProgress) return out;
+    const Match& m = session_->GetMatch();
     const bool batting = m.BattingSide() == side;
     if (role == Role::Captain && !batting && p.what != "review" && p.what != "interval") {
         out.push_back("field");
@@ -119,7 +140,7 @@ Status MatchHost::Apply(const ControllerAction& act, int64_t now) {
     if (what == "bowl") {
         BowlInput b;
         b.variation = a.Str("variation", "stock");
-        const Match& m = session_.GetMatch();
+        const Match& m = session_->GetMatch();
         const int bowler = m.Current().CurrentBowler();
         const bool spin = bowler >= 0 && m.GetTeam(m.FieldingSide()).xi[bowler].bowls == BowlingKind::Spin;
         bool known = false;
@@ -139,6 +160,17 @@ Status MatchHost::Apply(const ControllerAction& act, int64_t now) {
             return Status::Err("unknown shot");
         b.direction = static_cast<int>(std::clamp<int64_t>(a.Int("dir", 0), -180, 180));
         b.timingMs = static_cast<int>(std::clamp<int64_t>(a.Int("timing", 0), -1000, 1000));
+        if (cfg_.serverTimingCheck && act.receivedMs > 0) {
+            // Online anti-cheat: the tap reached us one round trip after the
+            // player saw the ball arrive, so the timing they report must be
+            // close to what we measured. Otherwise we use our measurement.
+            const int64_t rtt = std::max<int64_t>(0, hub_.RttMs(act.device));
+            const int64_t measured = act.receivedMs - arriveAt_ - rtt;
+            if (std::abs(b.timingMs - measured) > cfg_.timingToleranceMs) {
+                b.timingMs = static_cast<int>(std::clamp<int64_t>(measured, -1000, 1000));
+                ++timingCorrections_;
+            }
+        }
         b.provided = true;
         bat_ = b;
         ResolveBall(now);
@@ -152,21 +184,26 @@ Status MatchHost::Apply(const ControllerAction& act, int64_t now) {
         return Status::Ok();
     }
     Status s = Captaincy(act.side, what, a, now);
-    if (s && session_.WaitingFor().what != "delivery") stage_.clear();
+    if (s && session_->WaitingFor().what != "delivery") stage_.clear();
     return s;
 }
 
 void MatchHost::ReleaseBall(int64_t now) {
     stage_ = "ball";
     arriveAt_ = now + cfg_.ballFlightMs;
-    deadline_ = arriveAt_ + cfg_.batWindowMs;
+    // Online, the batter's tap needs a round trip to reach us: allow for it.
+    int64_t latency = 0;
+    if (cfg_.serverTimingCheck)
+        for (const auto& d : hub_.Devices())
+            if (d.side == session_->GetMatch().BattingSide()) latency = std::max(latency, hub_.RttMs(d.id));
+    deadline_ = arriveAt_ + cfg_.batWindowMs + std::clamp<int64_t>(latency, 0, 1500);
     bat_ = {};
     fieldingCalls_.clear();
     // The batting phone animates the ball and measures the tap against arrival.
     Json ev = Json::Object();
     ev.Set("k", "ball").Set("arriveInMs", cfg_.ballFlightMs).Set("variation", bowl_.variation);
     ev.Set("line", bowl_.line).Set("length", bowl_.length);
-    hub_.Broadcast(session_.GetMatch().BattingSide(), ev);
+    hub_.Broadcast(session_->GetMatch().BattingSide(), ev);
 }
 
 Delivery MatchHost::ResolveWithInputs(const Match& m, QuickSim& sim, const BowlInput& bowl, const BatInput& bat,
@@ -231,20 +268,20 @@ Delivery MatchHost::ResolveWithInputs(const Match& m, QuickSim& sim, const BowlI
 
 void MatchHost::ResolveBall(int64_t now) {
     if (stage_ != "ball") return;
-    const Match& m = session_.GetMatch();
+    const Match& m = session_->GetMatch();
     Delivery d = ResolveWithInputs(m, sim_, bowl_, bat_, rng_);
     stage_.clear();
     auto c = sim_.MakeCase(m, d);
-    if (!c || !session_.ResolveAppeal(*c)) session_.ResolveDelivery(d);
+    if (!c || !session_->ResolveAppeal(*c)) session_->ResolveDelivery(d);
     (void)now;
 }
 
 void MatchHost::AdvanceDelivery(int64_t now) {
-    if (session_.WaitingFor().what != "delivery") {
+    if (session_->WaitingFor().what != "delivery") {
         stage_.clear();
         return;
     }
-    const Match& m = session_.GetMatch();
+    const Match& m = session_->GetMatch();
     const int fielding = m.FieldingSide(), batting = m.BattingSide();
     if (stage_.empty()) {
         if (cfg_.human[fielding]) {
@@ -288,24 +325,24 @@ void MatchHost::Process(int64_t now) {
             arriveAt_ += held;
             pausedAt_ = 0;
         }
-        session_.Tick(now);
-        if (session_.WaitingFor().what == "interval") {
+        session_->Tick(now);
+        if (session_->WaitingFor().what == "interval") {
             bool anyHuman = false;
             for (int s = 0; s < 2; ++s) anyHuman |= cfg_.human[s];
-            if (!anyHuman) session_.ResumeAfterInterval();
+            if (!anyHuman) session_->ResumeAfterInterval();
         }
         AdvanceDelivery(now);
     }
-    for (const auto& e : session_.EventsSince(lastEvent_))
+    for (const auto& e : session_->EventsSince(lastEvent_))
         if (e.kind != "join") message_ = e.text;  // the latest thing that happened
-    lastEvent_ = session_.LastEventId();
+    lastEvent_ = session_->LastEventId();
     PublishStates(now);
 }
 
 Json MatchHost::ViewFor(int side, Role role, int64_t now) const {
     Json v = Json::Object();
     v.Set("k", "state");
-    const Pending p = session_.WaitingFor();
+    const Pending p = session_->WaitingFor();
     v.Set("waiting", p.what).Set("waitingSide", p.side);
     v.Set("yourSide", side).Set("role", ToString(role));
     v.Set("stage", stage_);
@@ -315,17 +352,17 @@ Json MatchHost::ViewFor(int side, Role role, int64_t now) const {
     Json controls = Json::Array();
     for (const auto& c : AllowedControls(side, role)) controls.Push(Json::String(c));
     v.Set("controls", controls);
-    const auto& teams = session_.Teams();
+    const auto& teams = session_->Teams();
     Json names = Json::Array();
     for (const auto& t : teams) names.Push(Json::String(t.name));
     v.Set("teams", names);
-    if (p.what == "review") v.Set("reviewMsLeft", session_.ReviewMsLeft());
+    if (p.what == "review") v.Set("reviewMsLeft", session_->ReviewMsLeft());
     if (stage_ == "bowl" || stage_ == "ball") v.Set("stageMsLeft", std::max<int64_t>(0, deadline_ - now));
-    if (!session_.HasMatch()) {
-        v.Set("toss", session_.GetToss().Phase() == TossPhase::AwaitingCall ? "call" : "decide");
+    if (!session_->HasMatch()) {
+        v.Set("toss", session_->GetToss().Phase() == TossPhase::AwaitingCall ? "call" : "decide");
         return v;
     }
-    const Match& m = session_.GetMatch();
+    const Match& m = session_->GetMatch();
     const Innings& inn = m.Current();
     const Team& bat = m.GetTeam(inn.BattingSide());
     const Team& fld = m.GetTeam(1 - inn.BattingSide());

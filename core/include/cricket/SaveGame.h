@@ -26,9 +26,9 @@
 
 namespace cricket {
 
-// Version 2 added DrsRules::reviewRunOutsAndStumpings. Version 1 files still
-// load (that field is read as false, matching how they were played).
-constexpr int kSaveFormatVersion = 2;
+// Version 2 added DrsRules::reviewRunOutsAndStumpings (version 1 files load
+// with it off). Version 3 added the "AI takes over a side" session input.
+constexpr int kSaveFormatVersion = 3;
 
 // ---- Whole-file saves ----------------------------------------------------
 std::string SaveMatch(const Match& m);

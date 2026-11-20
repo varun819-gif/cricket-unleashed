@@ -299,7 +299,7 @@ void ControllerHub::OnMessage(ConnId c, Conn& k, const Json& j, int64_t now) {
             return;
         }
         d.info.lastActionId = id;
-        actions_.push_back({k.device, d.info.side, d.info.role, id, *a});
+        actions_.push_back({k.device, d.info.side, d.info.role, id, *a, now});
         return;
     }
     if (kind == "bye") {

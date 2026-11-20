@@ -59,7 +59,7 @@ struct SessionEvent {
 // One recorded input to the session (the journal that session saves replay).
 enum class InputType {
     Join, Submit, SubmitAt, Delivery, Appeal, ExpireReview, Tick, RunAi, Resume,
-    Penalty, Rain, ReduceOvers, LoseDay, Abandon,
+    Penalty, Rain, ReduceOvers, LoseDay, Abandon, Release,
 };
 struct SessionInput {
     InputType type = InputType::RunAi;
@@ -89,6 +89,8 @@ public:
 
     // A human claims a side. Unclaimed sides are run by the AI captain.
     Status Join(const std::string& player, int side);
+    // The AI captain takes over a side (e.g. its online player never came back).
+    Status ReleaseSide(int side);
     Status Submit(const Command& c);
     // Server-side ball resolution (physics / QuickSim). Never called with client data.
     Status ResolveDelivery(const Delivery& d);
@@ -155,6 +157,7 @@ private:
     Status ReduceOversImpl(int oversThis, int oversSecond);
     Status LoseRestOfDayImpl();
     Status AbandonMatchImpl();
+    Status ReleaseSideImpl(int side);
     void Log(std::string kind, std::string text, std::optional<DeliveryRecord> ball = std::nullopt);
     Status Apply(int side, const Command& c);
     void StartMatch();

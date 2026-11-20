@@ -19,6 +19,7 @@
 
 #include <array>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -49,17 +50,28 @@ struct HostConfig {
     int64_t ballFlightMs = 1400;             // release -> arrival, as shown on the phone
     int64_t batWindowMs = 1200;              // extra time after arrival to play a shot
     uint64_t seed = 1;
+    // Online: judge batting timing on the server (anti-cheat) and allow
+    // for network round trips in the batting window.
+    bool serverTimingCheck = false;
+    int64_t timingToleranceMs = 150;
 };
 
 class MatchHost {
 public:
-    MatchHost(MatchRules rules, std::array<Team, 2> teams, ControllerHub& hub, HostConfig cfg);
+    MatchHost(MatchRules rules, std::array<Team, 2> teams, ControlChannel& hub, HostConfig cfg);
+    // Continue a match rebuilt from its journal (server crash recovery).
+    // `resumeSalt` varies the simulator after a restart.
+    MatchHost(std::unique_ptr<MatchSession> recovered, ControlChannel& hub, HostConfig cfg, uint64_t resumeSalt);
+    // The AI captain takes over a side (online casual: player never came back).
+    Status HandToAi(int side);
+    bool IsHuman(int side) const { return cfg_.human.at(side); }
+    int TimingCorrections() const { return timingCorrections_; }
 
     // Call often (e.g. every 50 ms) with the current time.
     void Process(int64_t nowMs);
 
-    MatchSession& Session() { return session_; }
-    const MatchSession& Session() const { return session_; }
+    MatchSession& Session() { return *session_; }
+    const MatchSession& Session() const { return *session_; }
     // The view a given phone receives.
     Json ViewFor(int side, Role role, int64_t nowMs) const;
     // Controls this phone may use right now.
@@ -85,9 +97,10 @@ private:
     bool SideConnected(int side) const;
     static std::string PlayerId(int side) { return "side-" + std::to_string(side); }
 
-    ControllerHub& hub_;
+    ControlChannel& hub_;
     HostConfig cfg_;
-    MatchSession session_;
+    std::unique_ptr<MatchSession> session_;
+    int timingCorrections_ = 0;
     QuickSim sim_;
     std::mt19937_64 rng_;
     std::array<uint64_t, 2> seq_{0, 0};

@@ -70,7 +70,9 @@ const std::map<std::string, std::pair<std::string, std::string>>& LocalServer::R
     return r;
 }
 
-LocalServer::LocalServer(ControllerHub& hub, ServerConfig cfg) : hub_(hub), cfg_(std::move(cfg)) {}
+LocalServer::LocalServer(ConnectionSink& hub, ServerConfig cfg) : hub_(hub), cfg_(std::move(cfg)) {
+    if (cfg_.routes.empty()) cfg_.routes = Routes();
+}
 
 LocalServer::~LocalServer() { Stop(); }
 
@@ -192,7 +194,8 @@ void LocalServer::OnHttp(Client& c, int64_t now) {
             return SendHttp(c, 400, "Bad Request", "text/plain", "WebSocket upgrade required");
         // Only the controller page itself may open the socket (blocks other
         // websites in the phone's browser from talking to the TV).
-        if (h.count("origin") && h["origin"] != "http://" + host)
+        // (behind a TLS proxy on the internet the page origin is https://)
+        if (h.count("origin") && h["origin"] != "http://" + host && h["origin"] != "https://" + host)
             return SendHttp(c, 403, "Forbidden", "text/plain", "wrong origin");
         auto conn = hub_.Open(now);
         if (!conn) return SendHttp(c, 503, "Service Unavailable", "text/plain", "too many controllers");
@@ -212,10 +215,11 @@ void LocalServer::OnHttp(Client& c, int64_t now) {
         if (path == "/tv.json" && tvJson_) return SendHttp(c, 200, "OK", "application/json", tvJson_());
         return SendHttp(c, 404, "Not Found", "text/plain", "no TV page");
     }
-    auto r = Routes().find(path);
-    if (r == Routes().end()) return SendHttp(c, 404, "Not Found", "text/plain", "not found");
+    auto r = cfg_.routes.find(path);
+    if (r == cfg_.routes.end()) return SendHttp(c, 404, "Not Found", "text/plain", "not found");
     bool ok = false;
-    std::string body = ReadFile(cfg_.webRoot + "/" + r->second.first, &ok);
+    const std::string& file = r->second.first;
+    std::string body = ReadFile(!file.empty() && file[0] == '/' ? file : cfg_.webRoot + "/" + file, &ok);
     if (!ok) return SendHttp(c, 404, "Not Found", "text/plain", "missing file");
     SendHttp(c, 200, "OK", r->second.second, body);
 }
