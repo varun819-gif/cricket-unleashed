@@ -59,6 +59,7 @@ cmake --build build -j
 | Multiplayer core | server-authoritative session: join sides, rejects duplicate and out-of-turn commands, review timer, break pauses, weather and penalty actions, ordered event log so a reconnecting client can catch up, crash recovery from the session journal |
 | Teams | 10 international sides with real country names and flags (India, Pakistan, ...); **players are fictional**; no board logos or kits |
 | **Phone controller** | QR pairing over home Wi-Fi, secret never sent over the network, signed + numbered messages, captain / player / spectator controls (toss, captaincy, review, bowling, batting, fielding), automatic reconnection with the game waiting for you, TV page with QR codes. Ball outcomes are **simulated placeholders** until Unreal physics. See [docs/MOBILE_CONTROLLER.md](docs/MOBILE_CONTROLLER.md) and [docs/CONNECT_YOUR_PHONE.md](docs/CONNECT_YOUR_PHONE.md) |
+| **Single player vs computer** | in the same browser app: pick your country (e.g. India), the computer captain plays the other team (toss, batting order, bowling changes, fields, its batting and bowling); you control your batting and bowling. Uses the same rules engine and scorer. Practice only: not in ratings, stats or leaderboards. Ball outcomes are **simulated placeholders**. See [docs/SINGLE_PLAYER.md](docs/SINGLE_PLAYER.md) |
 | **Online multiplayer** (preview) | self-hosted `cricket_server` (₹0): guest players (no password), private rooms with 6-letter codes, quick + ranked matchmaking, Elo ratings, server-decided scores, reconnection (match waits 2 min, then ranked forfeit / casual AI takeover), anti-cheat timing check, duplicate-message protection, crash recovery, history, stats, leaderboards. ⚠️ Tested on one machine only - **the two-device internet test is still pending**. See [docs/ONLINE_MULTIPLAYER.md](docs/ONLINE_MULTIPLAYER.md) and [docs/ONLINE_SERVER_SETUP.md](docs/ONLINE_SERVER_SETUP.md) |
 
 ## Repository layout
@@ -90,6 +91,7 @@ docs/                   design documents
 - [Online multiplayer](docs/ONLINE_MULTIPLAYER.md) · [Run the server for ₹0 + internet test](docs/ONLINE_SERVER_SETUP.md)
 - [Moderation](docs/MODERATION.md) · [Account linking (future)](docs/ACCOUNT_LINKING.md) · [Priority 3 closure report](docs/P3_CLOSURE_REPORT.md)
 - [Unreal Engine development plan](docs/UNREAL_DEVELOPMENT_PLAN.md)
+- [Run on a Windows laptop](docs/RUN_ON_WINDOWS.md) · [Single player vs computer](docs/SINGLE_PLAYER.md)
 - [Missing details and assumptions](docs/MISSING_DETAILS.md)
 - [Commentary design](docs/COMMENTARY_DESIGN.md)
 - [Leaderboard design](docs/LEADERBOARD_DESIGN.md)

@@ -86,7 +86,7 @@
       failed: 'Could not connect',
       revoked: 'Unpaired by the TV',
       stopped: 'Stopped',
-      lobby: 'Online lobby',
+      lobby: 'Lobby',
       joining: 'Joining…',
       replaced: 'Signed in on another device',
       banned: 'Suspended',

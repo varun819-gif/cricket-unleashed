@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.0] - 2026-11-20 - Single player vs computer
+
+### Added
+- "Play vs computer" in the browser lobby: choose your team and the
+  computer's team (default India vs Pakistan, 2 overs). Runs on the existing
+  `MatchHost` + `MatchSession` with the AI captain on the other side - no
+  new scoring code. Recorded in History as "vs computer"; not counted in
+  ratings, stats, leaderboards or ranked unlock.
+- Tests: 2 C++ (241 total), desktop-Chrome end-to-end `solo.e2e.mjs`.
+
 ## [0.9.1] - 2026-11-20 - Priority 3 review and project decisions
 
 ### Added

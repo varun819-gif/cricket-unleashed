@@ -4,6 +4,7 @@
 // ratings and leaderboards. Everything here runs in-process (no network);
 // the real-socket tests are in online/web/tests.
 #include <filesystem>
+#include <set>
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -1005,4 +1006,73 @@ TEST(online_moderation_survives_restart) {
     const std::string log = ReadAll(dir + "/moderation.jsonl");
     CHECK(log.find("ban-permanent") != std::string::npos);
     CHECK(log.find("report-actioned") != std::string::npos);
+}
+
+// ---------------------------------------------------------------- single player
+
+TEST(online_single_player_vs_computer) {
+    OnlineConfig cfg = World::Cfg();
+    cfg.rankedUnlockMatches = 1;
+    World w(cfg);
+    Client me(w);
+    me.Guest("Solo", "IN");
+    CHECK(!me.Ok(me.Req("solo", Json::Object().Set("team", "India").Set("opponent", "India"))));
+    CHECK(!me.Ok(me.Req("solo", Json::Object().Set("team", "Narnia"))));
+    CHECK(me.Ok(me.Req("solo", Json::Object().Set("team", "India").Set("format", "overs=2"))));
+    auto m = me.Last("match");
+    CHECK(m.has_value());
+    CHECK_EQ(m->Str("mode"), std::string("solo"));
+    CHECK_EQ(m->Int("side"), 0);
+    CHECK_EQ(m->Get("sides")->Items()[1].Str("team"), std::string("Pakistan"));  // default opponent
+    CHECK_EQ(m->Get("sides")->Items()[1].Str("player"), std::string("Computer"));
+    CHECK(m->Get("sides")->Items()[1].Flag("ai"));
+    CHECK(!me.Ok(me.Req("solo", Json::Object().Set("team", "India"))));  // one match at a time
+    // Play only my side; the computer captain does everything for the other side.
+    Bot bot(me, 9);
+    std::set<std::string> controlsSeen;
+    bool sawScore = false;
+    for (int i = 0; i < 20000 && !me.Last("end"); ++i) {
+        bot.Play();
+        if (auto st = me.Last("state")) {
+            if (const Json* c = st->Get("controls"))
+                for (const auto& x : c->Items()) controlsSeen.insert(x.AsString());
+            sawScore = sawScore || st->Get("score") != nullptr;
+        }
+        w.Step(50);
+    }
+    auto e = me.Last("end");
+    CHECK(e.has_value());
+    if (!e) return;
+    CHECK(sawScore);                       // live scoreboard was sent
+    CHECK(controlsSeen.count("bowl") == 1);  // I bowled ...
+    CHECK(controlsSeen.count("bat") == 1);   // ... and batted
+    CHECK(controlsSeen.count("toss-call") + controlsSeen.count("toss-decide") >= 1);
+    const Json& rec = *e->Get("record");
+    CHECK_EQ(rec.Str("mode"), std::string("solo"));
+    CHECK(rec.Str("outcome") == "win" || rec.Str("outcome") == "tie");
+    CHECK(rec.Get("s0")->Int("balls") > 0);
+    CHECK(rec.Get("s1")->Int("balls") > 0);  // the computer batted too
+    CHECK(rec.Get("s1")->Int("balls") <= 12);
+    CHECK(!rec.Str("summary").empty());
+    // Practice: history yes; stats, ratings, leaderboards and ranked unlock no.
+    CHECK_EQ(me.Res(me.Req("history"))->Get("matches")->Items().size(), static_cast<size_t>(1));
+    CHECK_EQ(w.store.Find(me.id)->stats.matches, 0);
+    CHECK_EQ(w.store.Find(me.id)->rating, 1200);
+    CHECK(me.Res(me.Req("leaderboard", Json::Object().Set("board", "matches")))->Get("board")->Get("rows")->Items().empty());
+    CHECK(me.Err(me.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "India"))).find("unlock") != std::string::npos);
+    // Online play still works afterwards.
+    CHECK(me.Ok(me.Req("room-create", Json::Object().Set("team", "India"))));
+}
+
+TEST(online_single_player_leaving_ends_without_result) {
+    World w;
+    Client me(w);
+    me.Guest("Solo");
+    CHECK(me.Ok(me.Req("solo", Json::Object().Set("team", "Australia").Set("opponent", "England"))));
+    me.Drop();
+    w.Step(121000);
+    CHECK_EQ(w.server.LiveMatches(), static_cast<size_t>(0));
+    me.inbox.clear();
+    CHECK(me.Login());
+    CHECK(!me.Last("match").has_value());
 }

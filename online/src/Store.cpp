@@ -115,7 +115,7 @@ std::optional<MatchRecord> Store::MatchFrom(const Json& j) {
     m.summary = j.Str("summary");
     m.ratingDelta = {static_cast<int>(j.Int("d0")), static_cast<int>(j.Int("d1"))};
     m.saveFile = j.Str("save");
-    if (m.id.empty() || (m.mode != "casual" && m.mode != "ranked")) return std::nullopt;
+    if (m.id.empty() || (m.mode != "casual" && m.mode != "ranked" && m.mode != "solo")) return std::nullopt;
     return m;
 }
 
@@ -258,6 +258,7 @@ int Store::EloDelta(int rating, int opponent, double score, int ratedGames) {
 }
 
 void Store::ApplyMatch(const MatchRecord& m) {
+    if (m.mode == "solo") return;  // practice vs the computer: history only, no stats
     for (int s = 0; s < 2; ++s) {
         auto it = accounts_.find(m.sides[s].account);
         if (it == accounts_.end()) continue;
@@ -370,6 +371,7 @@ Json Store::Leaderboard(const std::string& board, const std::string& period, con
     };
     std::map<std::string, Row> rows;
     for (const auto& m : matches_) {
+        if (m.mode == "solo") continue;  // games vs the computer never count on leaderboards
         if (m.endedMs < since) continue;
         if (mode != "all" && m.mode != mode) continue;
         // Only matches played to a real result count on the stat boards

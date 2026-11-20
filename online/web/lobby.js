@@ -21,9 +21,11 @@
   }
   function withFlag(code, text) { const s = el('span'); const f = flag(code); if (f) s.append(f); s.append(text); return s; }
   function showTeamFlag() {
-    const code = teamFlags[$('team').value];
-    $('teamFlag').hidden = !code;
-    if (code) $('teamFlag').src = 'flags/' + code + '.svg';
+    [['team', 'teamFlag'], ['opponent', 'oppFlag']].forEach(([sel, img]) => {
+      const code = teamFlags[$(sel).value];
+      $(img).hidden = !code;
+      if (code) $(img).src = 'flags/' + code + '.svg';
+    });
   }
 
   function toast(msg) {
@@ -45,6 +47,7 @@
     $('lobby').hidden = !lobby;
     $('matchBar').hidden = !(client.inMatch && s === 'connected');
     $('playCard').hidden = !!(room || queued);
+    $('soloCard').hidden = !!(room || queued);
     $('queueCard').hidden = !queued;
     $('roomCard').hidden = !room;
     $('endCard').hidden = !ended;
@@ -79,7 +82,7 @@
       const r = ended.record;
       $('endText').textContent = r.summary || r.outcome;
       const d = ended.delta || 0;
-      $('endRating').textContent = r.mode === 'ranked' ? 'Rating ' + (ended.rating || '') + ' (' + (d >= 0 ? '+' : '') + d + ')' : 'Casual match - rating unchanged';
+      $('endRating').textContent = r.mode === 'solo' ? 'Single player vs computer - not counted in ratings or leaderboards' : r.mode === 'ranked' ? 'Rating ' + (ended.rating || '') + ' (' + (d >= 0 ? '+' : '') + d + ')' : 'Casual match - rating unchanged';
       $('endRating').className = d > 0 ? 'win' : d < 0 ? 'loss' : '';
     }
   }
@@ -93,9 +96,13 @@
     const names = { 'overs=2': '2 overs (quick)', 'overs=5': '5 overs', 'overs=10': '10 overs', t20: 'T20 (20 overs)', odi: 'ODI (50 overs)' };
     format.replaceChildren(...r.formats.map((f) => { const o = el('option', names[f] || f); o.value = f; return o; }));
     teamFlags = r.flags || {};
+    const opp = $('opponent');
+    opp.replaceChildren(...r.teams.map((t) => { const o = el('option', t); o.value = t; return o; }));
+    const savedOpp = store && store.getItem('cu.opponent');
+    opp.value = savedOpp && r.teams.indexOf(savedOpp) >= 0 ? savedOpp : 'Pakistan';
     if (savedTeam && r.teams.indexOf(savedTeam) >= 0) team.value = savedTeam;
     showTeamFlag();
-    format.value = savedFormat && r.formats.indexOf(savedFormat) >= 0 ? savedFormat : 'overs=5';
+    format.value = savedFormat && r.formats.indexOf(savedFormat) >= 0 ? savedFormat : 'overs=2';
   }
 
   async function showTab(which) {
@@ -123,7 +130,7 @@
         const tr = el('tr');
         tr.append(el('td', res, m.winner === mine ? 'win' : m.winner === 1 - mine ? 'loss' : ''),
           el('td', m.s0.team + ' ' + m.s0.total + '/' + m.s0.wickets + ' v ' + m.s1.team + ' ' + m.s1.total + '/' + m.s1.wickets),
-          el('td', m.mode + (m.mode === 'ranked' ? ' (' + (mine ? m.d1 : m.d0) + ')' : '')));
+          el('td', (m.mode === 'solo' ? 'vs computer' : m.mode) + (m.mode === 'ranked' ? ' (' + (mine ? m.d1 : m.d0) + ')' : '')));
         const opp = mine ? m.s0 : m.s1;
         if (opp.account) {
           const rb = el('button', 'Report', 'ghost small report');
@@ -168,6 +175,11 @@
   });
   $('team').addEventListener('change', () => { if (store) store.setItem('cu.team', $('team').value); showTeamFlag(); });
   $('format').addEventListener('change', () => { if (store) store.setItem('cu.format', $('format').value); });
+  $('opponent').addEventListener('change', () => { if (store) store.setItem('cu.opponent', $('opponent').value); showTeamFlag(); });
+  $('solo').addEventListener('click', () => {
+    if ($('opponent').value === $('team').value) return toast('Pick a different team for the computer');
+    req('solo', { team: $('team').value, opponent: $('opponent').value, format: $('format').value });
+  });
   $('quick').addEventListener('click', () => req('queue', Object.assign({ mode: 'casual' }, choice())));
   $('ranked').addEventListener('click', () => req('queue', Object.assign({ mode: 'ranked' }, choice())));
   $('cancelQueue').addEventListener('click', async () => { if ((await req('queue-cancel')).ok) { queued = null; show(); } });

@@ -66,6 +66,7 @@ std::array<SideResult, 2> Summarise(const Match& m) {
 std::vector<ctl::DeviceInfo> OnlineMatch::Devices() const {
     std::vector<ctl::DeviceInfo> out;
     for (int s = 0; s < 2; ++s) {
+        if (players[s].empty()) continue;  // the computer's side (single player)
         ctl::DeviceInfo d;
         d.id = players[s];
         d.side = s;
@@ -357,6 +358,20 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
         return Reply(c, seq, true, "");
     }
     if (kind == "queue") return Enqueue(c, k, j, now);
+    if (kind == "solo") {
+        // Single player: you against the computer captain (same match engine,
+        // no opponent, no matchmaking). Not counted in ratings, stats or leaderboards.
+        if (!presence_[me].match.empty()) return Reply(c, seq, false, "finish your match first");
+        const std::string format = j.Str("format", "overs=2"), team = j.Str("team");
+        std::string opp = j.Str("opponent");
+        const auto teams = TeamNames();
+        if (std::find(teams.begin(), teams.end(), team) == teams.end()) return Reply(c, seq, false, "unknown team");
+        if (opp.empty()) opp = team == "Pakistan" ? "India" : "Pakistan";
+        if (std::find(teams.begin(), teams.end(), opp) == teams.end()) return Reply(c, seq, false, "unknown opponent");
+        if (opp == team) return Reply(c, seq, false, "pick a different team for the computer");
+        Status st = StartMatch("solo", format, {me, ""}, {team, opp}, now);
+        return Reply(c, seq, st.ok, st.error);
+    }
     if (kind == "queue-cancel") {
         Dequeue(me);
         return Reply(c, seq, true, "");
@@ -403,13 +418,15 @@ void OnlineServer::AttachMatch(const std::string& account, OnlineMatch& m) {
     for (int s = 0; s < 2; ++s) {
         const Account* a = store_.Find(m.players[s]);
         Json t = Obj();
-        t.Set("team", m.teamNames[s]).Set("player", a ? a->name : "?").Set("rating", a ? a->rating : 0);
+        t.Set("team", m.teamNames[s]).Set("player", a ? a->name : m.players[s].empty() ? "Computer" : "?");
+        t.Set("rating", a ? a->rating : 0);
         t.Set("ai", m.aiTakeover[s]);
         teams.Push(t);
     }
     j.Set("sides", teams);
     SendToAccount(account, j);
     m.events_.push_back({ctl::HubEvent::Kind::Connected, account, ""});  // resend the full state
+    if (m.players[1 - side].empty()) return;
     Json n = Obj();
     n.Set("k", "notice").Set("text", "Opponent connected");
     m.SendTo(m.players[1 - side], n);
@@ -678,6 +695,11 @@ Status OnlineServer::StartMatch(const std::string& mode, const std::string& form
     m->startedMs = now;
     m->lastProgressMs = now;
     ctl::HostConfig h = cfg_.host;
+    for (int s = 0; s < 2; ++s) {
+        // An empty account = the computer captain plays this side (single player).
+        m->aiTakeover[s] = accounts[s].empty();
+        h.human[s] = !accounts[s].empty();
+    }
     uint64_t seed = 0;
     for (unsigned char ch : rnd_(8)) seed = (seed << 8) | ch;
     h.seed = seed | 1;
@@ -692,6 +714,7 @@ Status OnlineServer::StartMatch(const std::string& mode, const std::string& form
     OnlineMatch& ref = *m;
     matches_[m->id] = std::move(m);
     for (int s = 0; s < 2; ++s) {
+        if (accounts[s].empty()) continue;
         Dequeue(accounts[s]);
         RoomLeave(accounts[s], false);
         presence_[accounts[s]].match = ref.id;
@@ -771,6 +794,7 @@ void OnlineServer::FinishMatch(OnlineMatch& m, int winner, const std::string& ou
     rec = store_.RecordMatch(rec);
     boardCache_.clear();
     for (int s = 0; s < 2; ++s) {
+        if (m.players[s].empty()) continue;
         Json e = Obj();
         e.Set("k", "end").Set("record", Store::MatchJson(rec)).Set("side", s);
         const Account* a = store_.Find(m.players[s]);
@@ -836,6 +860,7 @@ size_t OnlineServer::RecoverLiveMatches(int64_t now) {
         }
         m->actsLog = std::fopen((LiveDir() + "/" + id + ".acts").c_str(), "a");
         for (int s = 0; s < 2; ++s) {
+            if (m->players[s].empty()) continue;  // computer side
             presence_[m->players[s]].match = id;
             m->goneSince[s] = m->aiTakeover[s] ? -1 : now;  // both must reconnect within the grace period
         }
