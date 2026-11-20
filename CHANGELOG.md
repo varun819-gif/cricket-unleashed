@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.0] - 2026-11-20 - Rules milestone, Stage C: rain and revised targets
+
+### Added
+- **CU Rain Rule (non-official)**: our own resource-based method for revised
+  targets and par scores (`RainRule.h`). Clearly labelled; not DLS.
+- Limited overs: `RainDelay(minutes)` with buffer and minutes-per-over
+  conversion, equal cuts in the first innings, termination when the first
+  side has already batted longer, `ReduceOvers(a, b)`, revised targets,
+  immediate win when the revised target is already reached, minimum overs
+  (T20 5 / ODI 20) and no-result, abandonment decided on the par score,
+  rescaled bowler limits and powerplays for shortened innings.
+- Tests: time lost from the day, make-up up to 98 overs a day, rain through
+  lunch and tea, `LoseRestOfDay` (mid-over), first day washed out → lower
+  follow-on margin, washed-out last day → draw, abandon → draw / no result.
+- Session: `RainDelay`, `ReduceOvers`, `LoseRestOfDay`, `AbandonMatch`;
+  events `rain`, `overs`, `target`, `abandoned`. Simulator `--rain`.
+- `docs/RAIN_RULE.md`. 21 new tests (161 total).
+
+### Fixed
+- A rain-shortened chase that ended at once was judged against the old
+  target. The target is now revised first.
+- Event order: the innings break is now logged before the next innings
+  starts.
+- AI, field checks and commentary now use the current innings' own rules
+  (shortened innings).
+
 ## [0.4.0] - 2026-11-20 - Rules milestone, Stage B: Test match sessions
 
 ### Added

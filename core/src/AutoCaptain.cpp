@@ -18,7 +18,7 @@ const char* ToString(Difficulty d) {
 
 namespace {
 int OversLeft(const Match& m) {
-    const auto& r = m.Rules();
+    const auto& r = m.Current().Rules();
     if (r.oversPerInnings == 0) return 1000;
     return r.oversPerInnings - m.Current().CompletedOvers();
 }
@@ -57,10 +57,10 @@ int AutoCaptain::ChooseBowler(const Match& m) {
             const int overs = inn.Bowler(i).legalBalls / m.Rules().ballsPerOver;
             double s = p.bowling + p.form * 0.25 - overs * (limited ? 2.0 : 0.8) + jitter(rng_);
             if (limited && left <= 4 && p.bowls == BowlingKind::Pace) s += 8;  // death overs
-            if (limited && m.Rules().IsPowerplay(inn.CurrentOverNumber()) && p.bowls == BowlingKind::Pace) s += 5;
+            if (limited && m.Current().Rules().IsPowerplay(inn.CurrentOverNumber()) && p.bowls == BowlingKind::Pace) s += 5;
             if (!limited && inn.CompletedOvers() > 40 && p.bowls == BowlingKind::Spin) s += 6;  // old ball
             // Protect the quota: in limited overs keep the best bowlers for later.
-            if (limited && left > 8 && overs >= m.Rules().maxOversPerBowler - 1) s -= 10;
+            if (limited && left > 8 && overs >= m.Current().Rules().maxOversPerBowler - 1) s -= 10;
             if (s > bestScore) {
                 bestScore = s;
                 best = i;
@@ -72,7 +72,7 @@ int AutoCaptain::ChooseBowler(const Match& m) {
 
 FieldPreset AutoCaptain::ChooseFieldPreset(const Match& m, BowlingKind kind) const {
     const auto& inn = m.Current();
-    const auto& r = m.Rules();
+    const auto& r = m.Current().Rules();
     const int over = inn.CurrentOverNumber();
     if (r.oversPerInnings == 0) {  // Test
         if (kind == BowlingKind::Spin) return FieldPreset::Spin;
@@ -88,7 +88,7 @@ FieldPreset AutoCaptain::ChooseFieldPreset(const Match& m, BowlingKind kind) con
 }
 
 FieldSetup AutoCaptain::ChooseLegalField(const Match& m, BowlingKind kind) const {
-    FieldContext ctx{&m.Rules(), m.Current().CurrentOverNumber()};
+    FieldContext ctx{&m.Current().Rules(), m.Current().CurrentOverNumber()};
     for (FieldPreset p : {ChooseFieldPreset(m, kind), FieldPreset::Balanced, FieldPreset::Powerplay}) {
         FieldSetup f = FieldSetup::FromPreset(p);
         if (ValidateField(f, ctx).status) return f;
@@ -269,7 +269,7 @@ Delivery QuickSim::Next(const Match& m) {
     const Player& b = bat.xi[inn.Striker()];
     const Player& w = fld.xi[inn.CurrentBowler()];
     const bool freeHit = inn.NextBallIsFreeHit();
-    const auto& r = m.Rules();
+    const auto& r = m.Current().Rules();
 
     // Aggression: 0 (Test, defending) .. 1 (death overs / big chase)
     double aggression = 0.35;

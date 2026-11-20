@@ -1,5 +1,7 @@
 #include "cricket/Match.h"
 
+#include <algorithm>
+#include <cmath>
 #include <set>
 #include <stdexcept>
 
@@ -42,6 +44,7 @@ Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
         Status s = ValidateTeam(t, rules_.squadSize);
         if (!s) throw std::invalid_argument(s.error);
     }
+    plannedOvers_ = {rules_.oversPerInnings, rules_.oversPerInnings};
     if (rules_.schedule.enabled) {
         const auto& sc = rules_.schedule;
         if (sc.days < 1 || sc.oversPerDay < 1 || sc.sessionsPerDay < 1 || sc.maxOversPerDay < sc.oversPerDay ||
@@ -68,19 +71,18 @@ void Match::StartDay(int day) {
 }
 
 int Match::SessionEndBalls(int session) const {
-    // Sessions split the day's available overs evenly, ending on an over.
+    // Sessions split the day (including time lost to weather) evenly,
+    // ending on an over. Compared against elapsed time = played + lost.
     const int bpo = rules_.ballsPerOver;
     const int overs = (clock_.ballsAvailableToday + clock_.ballsLostToday) / bpo;
-    int end = overs * session / rules_.schedule.sessionsPerDay * bpo;
-    // Time lost to weather comes out of the sessions where it happened, so
-    // the day still ends at its (reduced) available balls.
-    end = std::min(end, clock_.ballsAvailableToday);
-    return end;
+    return overs * session / rules_.schedule.sessionsPerDay * bpo;
 }
 
 int Match::BallsLeftInSession() const {
     if (!rules_.schedule.enabled) return -1;
-    return std::max(0, SessionEndBalls(clock_.session) - clock_.ballsToday);
+    const int elapsed = clock_.ballsToday + clock_.ballsLostToday;
+    if (clock_.session >= rules_.schedule.sessionsPerDay) return std::max(0, BallsLeftToday());
+    return std::max(0, std::min(SessionEndBalls(clock_.session) - elapsed, BallsLeftToday()));
 }
 
 int Match::FollowOnThreshold() const {
@@ -106,31 +108,33 @@ void Match::RecordInterval(IntervalKind k, bool early) {
     intervals_.push_back(r);
 }
 
-void Match::CheckSchedule(bool inningsJustChanged) {
+void Match::CheckSchedule(bool inningsJustChanged, bool force) {
     if (!rules_.schedule.enabled || phase_ == MatchPhase::Complete) return;
     const auto& sc = rules_.schedule;
     const int bpo = rules_.ballsPerOver;
-    // Only between overs.
-    if (Current().BallsInOver() != 0 && !Current().IsComplete()) return;
+    // Breaks fall between overs; weather can stop play mid-over (force).
+    if (!force && Current().BallsInOver() != 0 && !Current().IsComplete()) return;
+    const int elapsed = clock_.ballsToday + clock_.ballsLostToday;
+    // Several breaks can pass during a long rain delay (lunch AND tea).
+    while (clock_.session < sc.sessionsPerDay) {
+        const int left = SessionEndBalls(clock_.session) - elapsed;
+        const bool near = inningsJustChanged && left <= sc.intervalNearOvers * bpo + bpo / 2;
+        if (left > 0 && !near) break;
+        IntervalKind k;
+        if (sc.dayNight) k = clock_.session == 1 ? IntervalKind::Tea : IntervalKind::Dinner;
+        else k = clock_.session == 1 ? IntervalKind::Lunch : IntervalKind::Tea;
+        RecordInterval(k, left > 0);
+        clock_.session++;
+        inningsJustChanged = false;
+    }
     if (clock_.ballsToday >= clock_.ballsAvailableToday) {
+        clock_.session = sc.sessionsPerDay;
         RecordInterval(IntervalKind::Stumps, false);
         if (clock_.day >= sc.days) {
             CallDraw();  // out of time on the last day
             return;
         }
         StartDay(clock_.day + 1);
-        return;
-    }
-    if (clock_.session < sc.sessionsPerDay) {
-        const int left = SessionEndBalls(clock_.session) - clock_.ballsToday;
-        const bool near = inningsJustChanged && left <= sc.intervalNearOvers * bpo + bpo / 2;
-        if (left <= 0 || near) {
-            IntervalKind k;
-            if (sc.dayNight) k = clock_.session == 1 ? IntervalKind::Tea : IntervalKind::Dinner;
-            else k = clock_.session == 1 ? IntervalKind::Lunch : IntervalKind::Tea;
-            RecordInterval(k, left > 0);
-            clock_.session++;
-        }
     }
 }
 
@@ -144,7 +148,13 @@ void Match::StartInnings(int side, std::optional<int> target) {
             clock_.ballsAvailableToday = std::max(clock_.ballsToday, clock_.ballsAvailableToday - cut);
         }
     }
-    innings_.emplace_back(rules_, side, static_cast<int>(innings_.size()), target);
+    const int idx = static_cast<int>(innings_.size());
+    MatchRules r = rules_;
+    if (LimitedOvers() && idx < 2) {
+        if (plannedOvers_[idx] != rules_.oversPerInnings) r = rules_.Scaled(plannedOvers_[idx]);
+        resources_[idx] = RainResources(plannedOvers_[idx], 0);
+    }
+    innings_.emplace_back(r, side, idx, target);
     phase_ = MatchPhase::InProgress;
     if (pendingPenalty_[side] > 0) {  // Law 41.17: awarded before this side batted
         innings_.back().AddPenaltyRuns(pendingPenalty_[side]);
@@ -252,13 +262,58 @@ void Match::CallDraw() {
     }
 }
 
-void Match::Abandon() {
-    if (phase_ == MatchPhase::Complete) return;
+void Match::NoResult(const std::string& why) {
     pending_.reset();
     Current().ForceComplete();
     phase_ = MatchPhase::Complete;
+    result_ = {};
     result_.kind = MatchResult::Kind::NoResult;
-    result_.summary = "Match abandoned - no result";
+    result_.summary = why;
+}
+
+void Match::Abandon() {
+    if (phase_ == MatchPhase::Complete) return;
+    pending_.reset();
+    if (!LimitedOvers()) {
+        // Test: once play has started an abandoned match is drawn.
+        if (clock_.startDay > 0 || Current().LegalBalls() > 0) {
+            CallDraw();
+            result_.summary = "Match drawn (play abandoned)";
+        } else {
+            NoResult("Match abandoned without a ball bowled");
+        }
+        return;
+    }
+    // Limited overs: a result is possible if the side batting second has
+    // faced the minimum overs; it is decided on the rain-rule par score.
+    Innings& cur = Current();
+    const int minBalls = rules_.weather.minOversForResult * rules_.ballsPerOver;
+    if (cur.Index() == 1 && cur.LegalBalls() >= minBalls && cur.Target()) {
+        const double left = static_cast<double>(cur.MaxOvers() * rules_.ballsPerOver - cur.LegalBalls()) /
+                            rules_.ballsPerOver;
+        resources_[1] -= RainResources(left, cur.Wickets());
+        rainAffected_ = true;
+        const int target = RainTarget(innings_[0].Total(), resources_[0], resources_[1], rules_.weather.fullInningsScore);
+        cur.ForceComplete();
+        // Judge the chase as if its innings had ended here.
+        phase_ = MatchPhase::Complete;
+        const int chasing = cur.BattingSide(), defending = 1 - chasing;
+        if (cur.Total() >= target) {
+            int leftW = rules_.squadSize - 1 - cur.Wickets();
+            result_ = {MatchResult::Kind::Win, MatchResult::Margin::Wickets, chasing, leftW,
+                       Name(chasing) + " won by " + std::to_string(leftW) + (leftW == 1 ? " wicket" : " wickets") +
+                           " (rain rule)"};
+        } else if (cur.Total() == target - 1) {
+            result_ = {MatchResult::Kind::Tie, MatchResult::Margin::None, -1, 0, "Match tied (rain rule)"};
+        } else {
+            int by = target - 1 - cur.Total();
+            result_ = {MatchResult::Kind::Win, MatchResult::Margin::Runs, defending, by,
+                       Name(defending) + " won by " + std::to_string(by) + (by == 1 ? " run" : " runs") + " (rain rule)"};
+        }
+        return;
+    }
+    NoResult("No result - match abandoned before " + std::to_string(rules_.weather.minOversForResult) +
+             " overs were possible for the side batting second");
 }
 
 void Match::FinishWithChase(const Innings& chase, int target) {
@@ -294,8 +349,11 @@ void Match::Advance() {
     if (rules_.inningsPerSide == 1) {
         if (done == 1) {
             StartInnings(1 - last.BattingSide(), last.Total() + 1);
+            RecomputeTarget();
+            if (Current().IsComplete()) Advance();  // revised target already reached (e.g. penalty runs)
         } else {
             FinishWithChase(innings_[1], *innings_[1].Target());
+            if (rainAffected_ && result_.kind != MatchResult::Kind::NoResult) result_.summary += " (rain rule)";
         }
         return;
     }
@@ -330,6 +388,129 @@ void Match::Advance() {
             FinishWithChase(innings_[3], *innings_[3].Target());
             break;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Weather (see docs/RAIN_RULE.md)
+
+double Match::ParScoreNow() const {
+    if (!LimitedOvers() || innings_.size() != 2 || phase_ == MatchPhase::Complete) return -1;
+    const Innings& cur = innings_[1];
+    const double left =
+        static_cast<double>(cur.MaxOvers() * rules_.ballsPerOver - cur.LegalBalls()) / rules_.ballsPerOver;
+    const double used = resources_[1] - RainResources(left, cur.Wickets());
+    return RainPar(innings_[0].Total(), resources_[0], used, rules_.weather.fullInningsScore);
+}
+
+Status Match::CutInnings(int idx, int overs) {
+    Innings& inn = innings_[idx];
+    const int bpo = rules_.ballsPerOver;
+    const double before = static_cast<double>(inn.MaxOvers() * bpo - inn.LegalBalls()) / bpo;
+    const double after = static_cast<double>(overs * bpo - inn.LegalBalls()) / bpo;
+    if (Status s = inn.SetMaxOvers(overs); !s) return s;
+    resources_[idx] -= RainResources(before, inn.Wickets()) - RainResources(std::max(0.0, after), inn.Wickets());
+    plannedOvers_[idx] = overs;
+    return Status::Ok();
+}
+
+Status Match::ReduceOvers(int oversThis, int oversSecond) {
+    if (!LimitedOvers()) return Status::Err("overs are only reduced in limited-overs cricket; Test time comes off the day");
+    if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
+    if (pending_) return Status::Err("a decision is pending");
+    const int idx = Current().Index();
+    if (idx > 1) return Status::Err("no innings to shorten");
+    if (oversThis < 1 || oversThis > plannedOvers_[idx]) return Status::Err("overs can only be reduced");
+    if (idx == 0) {
+        const int second = oversSecond > 0 ? oversSecond : oversThis;
+        if (second > plannedOvers_[1]) return Status::Err("overs can only be reduced");
+        if (Status s = CutInnings(0, oversThis); !s) return s;
+        plannedOvers_[1] = second;
+    } else {
+        if (Status s = CutInnings(1, oversThis); !s) return s;
+    }
+    rainAffected_ = true;
+    if (plannedOvers_[1] < rules_.weather.minOversForResult) {
+        NoResult("No result - fewer than " + std::to_string(rules_.weather.minOversForResult) +
+                 " overs possible for the side batting second");
+        return Status::Ok();
+    }
+    // Revise the chase target first (if innings 2 is under way), then let
+    // the match move on if an innings has just ended.
+    RecomputeTarget();
+    if (Current().IsComplete()) Advance();
+    return Status::Ok();
+}
+
+Status Match::RainDelay(int minutes) {
+    if (minutes <= 0) return Status::Err("minutes lost must be positive");
+    if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+    if (pending_) return Status::Err("a decision is pending");
+    const int bpo = rules_.ballsPerOver;
+    RainRecord rec;
+    rec.inningsIndex = Current().Index();
+    rec.minutes = minutes;
+    if (!LimitedOvers()) {
+        if (!rules_.schedule.enabled) return Status::Err("no schedule to lose time from");
+        const int overs = static_cast<int>(std::ceil(minutes / rules_.weather.minutesPerOver - 1e-9));
+        const int take = std::min(overs * bpo, std::max(0, clock_.ballsAvailableToday - clock_.ballsToday));
+        clock_.ballsAvailableToday -= take;
+        clock_.ballsLostToday += take;
+        clock_.makeUpBalls += take;
+        rec.day = clock_.day;
+        rec.oversLost = (take + bpo - 1) / bpo;
+        rainLog_.push_back(rec);
+        rainAffected_ = true;
+        CheckSchedule(false, true);
+        return Status::Ok();
+    }
+    if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
+    const int absorb = std::min(minutes, std::max(0, rules_.weather.bufferMinutes - bufferUsed_));
+    bufferUsed_ += absorb;
+    rec.bufferUsed = absorb;
+    const int net = minutes - absorb;
+    const int idx = Current().Index();
+    const int started = Current().CompletedOvers() + (Current().BallsInOver() > 0 ? 1 : 0);
+    if (net <= 0) {
+        rec.newOversThis = plannedOvers_[idx];
+        rec.newOversSecond = plannedOvers_[1];
+        rainLog_.push_back(rec);
+        return Status::Ok();
+    }
+    const int lost = static_cast<int>(std::ceil(net / rules_.weather.minutesPerOver - 1e-9));
+    rec.oversLost = lost;
+    Status s;
+    if (idx == 0) {
+        // Equal overs for both sides where possible; if the first innings has
+        // already gone past that, it ends now and the second innings absorbs
+        // the rest of the lost time.
+        const int equal = std::max(1, plannedOvers_[0] - (lost + 1) / 2);
+        const int n1 = std::max({equal, started, 1});
+        const int n2 = std::max(0, plannedOvers_[1] - (lost - (plannedOvers_[0] - n1)));
+        rec.newOversThis = n1;
+        rec.newOversSecond = n2;
+        if (n2 < 1) {
+            rainLog_.push_back(rec);
+            NoResult("No result - no time left for the side batting second");
+            return Status::Ok();
+        }
+        s = ReduceOvers(n1, std::min(n2, plannedOvers_[1]));
+    } else {
+        const int n2 = std::max({plannedOvers_[1] - lost, started, 1});
+        rec.newOversThis = n2;
+        rec.newOversSecond = n2;
+        s = ReduceOvers(n2);
+    }
+    if (s) rainLog_.push_back(rec);
+    return s;
+}
+
+Status Match::LoseRestOfDay() {
+    if (!rules_.schedule.enabled) return Status::Err("only scheduled (Test) matches have days");
+    if (phase_ == MatchPhase::Complete) return Status::Err("match is over");
+    const int left = std::max(0, clock_.ballsAvailableToday - clock_.ballsToday);
+    if (left == 0) return Status::Err("no play left today");
+    const double minutes = static_cast<double>(left) / rules_.ballsPerOver * rules_.weather.minutesPerOver;
+    return RainDelay(static_cast<int>(std::ceil(minutes)));
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +556,14 @@ Status Match::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
 
 void Match::RecomputeTarget() {
     Innings& cur = Current();
-    if (!cur.Target() || cur.IsComplete()) return;
+    if (!cur.Target()) return;
+    // A rain-shortened chase may have just ended: its target must still be
+    // revised before the result is decided.
+    if (LimitedOvers() && rainAffected_ && cur.Index() == 1) {
+        cur.SetTarget(RainTarget(innings_[0].Total(), resources_[0], resources_[1], rules_.weather.fullInningsScore));
+        return;
+    }
+    if (cur.IsComplete()) return;
     const int chasing = cur.BattingSide();
     int theirs = 0, ours = 0;
     for (const auto& i : innings_) {

@@ -84,6 +84,11 @@ public:
     // Server-side: end the current break (e.g. its timer ran out).
     Status ResumeAfterInterval();
     bool IsPaused() const { return paused_; }
+    // Weather (server/umpires only). See Match::RainDelay and docs/RAIN_RULE.md.
+    Status RainDelay(int minutes);
+    Status ReduceOvers(int oversThisInnings, int oversSecondInnings = 0);
+    Status LoseRestOfDay();
+    Status AbandonMatch();
     // Umpires award Law 41 penalty runs (server-side; never from a client).
     Status AwardPenaltyRuns(int side, int runs, const std::string& reason);
 
@@ -120,6 +125,7 @@ private:
     Status FinishDecision(Status s, const DecisionRecord& d, const DeliveryRecord& ball);
     Status TimeOutReview();
     void Resume();
+    Status AfterWeather(Status s, std::optional<int> targetBefore, size_t rainBefore);
     bool IsHuman(int side) const;
     int SideOf(const std::string& player) const;
 

@@ -270,9 +270,9 @@ std::vector<CommentaryLine> CommentaryEngine::Describe(const Match& m, const Del
     } else if (r.overCompleted) {
         out.push_back(Pick("Lead", r.maiden ? "maiden" : "over", v));
         // Chase pressure analysis from the expert at the end of an over.
-        if (inn.Target() && m.Rules().oversPerInnings > 0) {
+        if (inn.Target() && inn.MaxOvers() > 0) {
             int need = *inn.Target() - r.totalAfter;
-            int balls = m.Rules().oversPerInnings * m.Rules().ballsPerOver - inn.LegalBalls();
+            int balls = inn.MaxOvers() * m.Rules().ballsPerOver - inn.LegalBalls();
             if (need > 0 && balls > 0 && balls <= 36) {
                 v["need"] = std::to_string(need);
                 v["balls"] = std::to_string(balls);

@@ -21,6 +21,7 @@ add_library(cricket_core
   core/src/Toss.cpp
   core/src/Lbw.cpp
   core/src/Drs.cpp
+  core/src/RainRule.cpp
   core/src/ReviewAI.cpp
   core/src/FieldPlacement.cpp
   core/src/AutoCaptain.cpp
@@ -46,6 +47,7 @@ add_executable(cricket_tests
   core/tests/DrsConfigTests.cpp
   core/tests/DrsCompleteTests.cpp
   core/tests/TestSessionTests.cpp
+  core/tests/RainTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core)
 # Lets tests read source files (information-hiding scan of the AI code).

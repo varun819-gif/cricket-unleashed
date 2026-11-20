@@ -63,6 +63,8 @@ int Count(const Match& m, IntervalKind k) {
     return n;
 }
 
+bool LastIs(const Match& m, IntervalKind k) { return !m.Intervals().empty() && m.Intervals().back().kind == k; }
+
 }  // namespace
 
 TEST(sessions_lunch_tea_stumps_and_next_day) {
@@ -79,10 +81,10 @@ TEST(sessions_lunch_tea_stumps_and_next_day) {
     CHECK_EQ(m.Intervals()[0].day, 1);
     CHECK_EQ(m.Clock().session, 2);
     Overs(m, 30);  // 60
-    CHECK(m.Intervals().back().kind == IntervalKind::Tea);
+    CHECK(LastIs(m, IntervalKind::Tea));
     CHECK_EQ(m.Clock().session, 3);
     Overs(m, 30);  // 90
-    CHECK(m.Intervals().back().kind == IntervalKind::Stumps);
+    CHECK(LastIs(m, IntervalKind::Stumps));
     CHECK_EQ(m.Clock().day, 2);
     CHECK_EQ(m.Clock().session, 1);
     CHECK_EQ(m.Clock().ballsToday, 0);
@@ -106,8 +108,8 @@ TEST(sessions_changeover_costs_two_overs) {
     Feed(m, Runs(0), 88 * 6 - 220);
     CHECK_EQ(m.Clock().day, 1);
     Feed(m, Runs(0), 4);
-    CHECK(m.Intervals().back().kind == IntervalKind::Stumps);
-    CHECK_EQ(m.Intervals().back().day, 1);
+    CHECK(LastIs(m, IntervalKind::Stumps));
+    if (!m.Intervals().empty()) CHECK_EQ(m.Intervals().back().day, 1);
     CHECK_EQ(m.Clock().day, 2);
 }
 
@@ -115,6 +117,8 @@ TEST(sessions_innings_ending_near_lunch_brings_lunch_forward) {
     Match m(MatchRules::Test(), TwoTeams(), 0);
     Overs(m, 27);
     Feed(m, Bowled(), 10);  // all out at 28.4: 1.2 overs before lunch, inside 10 minutes
+    CHECK(!m.Intervals().empty());
+    if (m.Intervals().empty()) return;
     const IntervalRecord& lunch = m.Intervals().back();
     CHECK(lunch.kind == IntervalKind::Lunch);
     CHECK(lunch.early);
@@ -126,7 +130,7 @@ TEST(sessions_innings_ending_well_before_lunch_does_not) {
     Match m(MatchRules::Test(), TwoTeams(), 0);
     Overs(m, 20);
     Feed(m, Bowled(), 10);  // 21.4 overs: plenty of time left
-    CHECK(m.Intervals().back().kind == IntervalKind::InningsBreak);
+    CHECK(LastIs(m, IntervalKind::InningsBreak));
     CHECK_EQ(m.Clock().session, 1);
 }
 
@@ -148,7 +152,7 @@ TEST(sessions_last_day_stumps_draws_the_match) {
     Overs(m, 1);
     CHECK(m.Phase() == MatchPhase::Complete);
     CHECK(m.Result().kind == MatchResult::Kind::Draw);
-    CHECK(m.Intervals().back().kind == IntervalKind::Stumps);
+    CHECK(LastIs(m, IntervalKind::Stumps));
     CHECK_EQ(Count(m, IntervalKind::Stumps), 2);
     CHECK_ERR(m.Bowl(Runs(1)));
 }
@@ -337,6 +341,8 @@ TEST(sessions_innings_break_does_not_pause) {
 TEST(sessions_interval_commentary_both_languages) {
     Match m(MatchRules::Test(), TwoTeams(), 0);
     Overs(m, 30);
+    CHECK(!m.Intervals().empty());
+    if (m.Intervals().empty()) return;
     for (Language lang : {Language::English, Language::Hindi}) {
         CommentaryEngine com(lang, 1);
         auto lines = com.DescribeInterval(m, m.Intervals().back());

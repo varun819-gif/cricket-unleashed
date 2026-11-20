@@ -2,12 +2,14 @@
 // MatchSession and prints ball-by-ball commentary and the scorecard.
 //
 // Usage: cricket_sim [t20|odi|test|overs=N] [teamA] [teamB] [--hindi] [--seed N] [--quiet]
-//                    [--drs icc|no-reviews|no-tech|custom:<reviews>:<seconds>[:lose]]
+//                    [--drs icc|no-reviews|no-tech|custom:<reviews>:<seconds>[:lose][:calls]]
+//                    [--rain]   random rain delays (non-official rain rule for targets)
 // Team numbers 0-9 (see list printed with --teams).
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <random>
 
 #include "cricket/Commentary.h"
 #include "cricket/MatchSession.h"
@@ -46,7 +48,7 @@ int main(int argc, char** argv) {
     MatchRules rules = MatchRules::T20();
     int ta = 0, tb = 1, teamArgs = 0;
     uint64_t seed = Toss::SecureSeed();
-    bool hindi = false, quiet = false;
+    bool hindi = false, quiet = false, rain = false;
     auto teams = FictionalTeams();
     std::string drsName = "icc";
     for (int i = 1; i < argc; ++i) {
@@ -56,6 +58,7 @@ int main(int argc, char** argv) {
         else if (a == "test") rules = MatchRules::Test();
         else if (a == "--hindi") hindi = true;
         else if (a == "--quiet") quiet = true;
+        else if (a == "--rain") rain = true;
         else if (a == "--seed" && i + 1 < argc) seed = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--drs" && i + 1 < argc) drsName = argv[++i];
         else if (a == "--teams") {
@@ -80,10 +83,7 @@ int main(int argc, char** argv) {
     std::cout << teams[ta].name << " vs " << teams[tb].name << "  (seed " << seed << ")\n";
 
     uint64_t seen = 0;
-    while (session.WaitingFor().what == "delivery") {
-        Delivery d = sim.Next(session.GetMatch());
-        auto c = sim.MakeCase(session.GetMatch(), d);
-        if (!c || !session.ResolveAppeal(*c)) session.ResolveDelivery(d);
+    auto printNewEvents = [&]() {
         for (const auto& e : session.EventsSince(seen)) {
             if (e.kind == "ball") {
                 if (!quiet) {
@@ -99,7 +99,20 @@ int main(int argc, char** argv) {
             }
         }
         seen = session.LastEventId();
+    };
+    printNewEvents();
+    std::mt19937_64 weather(seed + 3);
+    while (session.WaitingFor().what == "delivery") {
+        if (rain && std::uniform_real_distribution<double>(0, 1)(weather) < 0.006)
+            session.RainDelay(std::uniform_int_distribution<int>(10, 150)(weather));
+        if (session.WaitingFor().what == "delivery") {
+            Delivery d = sim.Next(session.GetMatch());
+            auto c = sim.MakeCase(session.GetMatch(), d);
+            if (!c || !session.ResolveAppeal(*c)) session.ResolveDelivery(d);
+        }
+        printNewEvents();
     }
+    printNewEvents();
     PrintScorecard(session.GetMatch());
     return 0;
 }

@@ -94,14 +94,16 @@ void MatchSession::StartMatch() {
 void MatchSession::AfterMatchChange() {
     if (!match_) return;
     const auto& all = match_->AllInnings();
-    while (lastInningsSeen_ < all.size()) {
+    auto logNextInnings = [&]() {
+        if (lastInningsSeen_ >= all.size()) return;
         const Innings& inn = all[lastInningsSeen_];
         std::string t = "Innings " + std::to_string(lastInningsSeen_ + 1) + ": " + teams_[inn.BattingSide()].name +
                         " to bat";
         if (inn.Target()) t += ", target " + std::to_string(*inn.Target());
         Log("innings", t);
         lastInningsSeen_++;
-    }
+    };
+    if (lastInningsSeen_ == 0) logNextInnings();  // the first innings has no break before it
     const auto& iv = match_->Intervals();
     while (intervalsSeen_ < iv.size()) {
         const IntervalRecord& r = iv[intervalsSeen_++];
@@ -110,6 +112,7 @@ void MatchSession::AfterMatchChange() {
                                   (r.balls ? "." + std::to_string(r.balls) : std::string()) + ")";
         if (r.kind == IntervalKind::InningsBreak) {
             Log("innings-break", "Innings break. " + score);
+            logNextInnings();  // the innings that follows this break
             continue;
         }
         std::string kind = ToString(r.kind);
@@ -121,6 +124,7 @@ void MatchSession::AfterMatchChange() {
             ready_ = {!IsHuman(0), !IsHuman(1)};
         }
     }
+    while (lastInningsSeen_ < all.size()) logNextInnings();
     if (match_->Phase() == MatchPhase::AwaitingFollowOnDecision)
         Log("follow-on", teams_[all[0].BattingSide()].name + " may enforce the follow-on");
     if (match_->Phase() == MatchPhase::Complete && !resultLogged_) {
@@ -132,7 +136,7 @@ void MatchSession::AfterMatchChange() {
 void MatchSession::EnsureLegalField() {
     if (!match_ || match_->Phase() != MatchPhase::InProgress) return;
     const int side = match_->FieldingSide();
-    FieldContext ctx{&match_->Rules(), match_->Current().CurrentOverNumber()};
+    FieldContext ctx{&match_->Current().Rules(), match_->Current().CurrentOverNumber()};
     if (ValidateField(fields_[side], ctx).status) return;
     int bowler = match_->Current().CurrentBowler();
     BowlingKind kind = bowler >= 0 ? teams_[side].xi[bowler].bowls : BowlingKind::Pace;
@@ -197,7 +201,7 @@ Status MatchSession::Apply(int side, const Command& c) {
             FieldSetup f = c.type == CommandType::SetFieldPreset
                                ? FieldSetup::FromPreset(AllPresets()[c.a])
                                : c.field;
-            FieldContext ctx{&match_->Rules(), match_->Current().CurrentOverNumber()};
+            FieldContext ctx{&match_->Current().Rules(), match_->Current().CurrentOverNumber()};
             FieldCheck chk = ValidateField(f, ctx);
             if (!chk.status) return chk.status;
             fields_[side] = f;
@@ -368,6 +372,61 @@ Status MatchSession::ResumeAfterInterval() {
     if (!paused_) return Status::Err("play is not paused");
     Resume();
     RunAi();
+    return Status::Ok();
+}
+
+Status MatchSession::AfterWeather(Status s, std::optional<int> targetBefore, size_t rainBefore) {
+    if (!s) return s;
+    const Match& m = *match_;
+    if (m.RainLog().size() > rainBefore) {
+        const RainRecord& r = m.RainLog().back();
+        std::string t = "Rain: " + std::to_string(r.minutes) + " minutes lost";
+        if (r.bufferUsed > 0) t += " (" + std::to_string(r.bufferUsed) + " absorbed by extra time)";
+        if (m.HasSchedule()) t += ", " + std::to_string(r.oversLost) + " overs off day " + std::to_string(r.day);
+        else if (r.oversLost > 0)
+            t += ". Innings now " + std::to_string(r.newOversThis) + " overs" +
+                 (r.inningsIndex == 0 ? ", second innings " + std::to_string(r.newOversSecond) + " overs" : std::string());
+        Log("rain", t);
+    }
+    if (m.Current().Target() && m.Current().Target() != targetBefore)
+        Log("target", "Revised target (rain rule, non-official): " + std::to_string(*m.Current().Target()) + " from " +
+                          std::to_string(m.Current().MaxOvers()) + " overs");
+    AfterMatchChange();
+    RunAi();
+    return s;
+}
+
+Status MatchSession::RainDelay(int minutes) {
+    if (!match_) return Status::Err("match has not started");
+    const auto before = match_->Current().Target();
+    const size_t rain = match_->RainLog().size();
+    return AfterWeather(match_->RainDelay(minutes), before, rain);
+}
+
+Status MatchSession::ReduceOvers(int oversThis, int oversSecond) {
+    if (!match_) return Status::Err("match has not started");
+    const auto before = match_->Current().Target();
+    const size_t rain = match_->RainLog().size();
+    Status s = match_->ReduceOvers(oversThis, oversSecond);
+    if (s) Log("overs", "Overs reduced: this innings " + std::to_string(oversThis) + " overs");
+    return AfterWeather(s, before, rain);
+}
+
+Status MatchSession::LoseRestOfDay() {
+    if (!match_) return Status::Err("match has not started");
+    const auto before = match_->Current().Target();
+    const size_t rain = match_->RainLog().size();
+    return AfterWeather(match_->LoseRestOfDay(), before, rain);
+}
+
+Status MatchSession::AbandonMatch() {
+    if (!match_) return Status::Err("match has not started");
+    if (match_->Phase() == MatchPhase::Complete) return Status::Err("match is over");
+    match_->Abandon();
+    Log("abandoned", "Play abandoned");
+    reviewDeadlineMs_.reset();
+    paused_ = false;
+    AfterMatchChange();
     return Status::Ok();
 }
 

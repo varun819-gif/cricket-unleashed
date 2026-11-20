@@ -56,6 +56,7 @@ MatchRules MatchRules::T20() {
     r.maxOversPerBowler = 4;
     r.phases = {{1, 6, 2}};
     r.defaultMaxOutsideCircle = 5;
+    r.weather = {5, 4.25, 10, 275};
     return r;
 }
 
@@ -66,6 +67,7 @@ MatchRules MatchRules::ODI() {
     r.maxOversPerBowler = 10;
     r.phases = {{1, 10, 2}, {11, 40, 4}, {41, 50, 5}};
     r.defaultMaxOutsideCircle = 5;
+    r.weather = {20, 4.2, 30, 245};
     return r;
 }
 
@@ -81,6 +83,7 @@ MatchRules MatchRules::Test(int days) {
     r.schedule.days = std::max(1, days);
     r.defaultMaxOutsideCircle = -1;
     r.newBallAfterOvers = 80;
+    r.weather = {0, 4.0, 0, 0};
     return r;
 }
 
@@ -94,6 +97,7 @@ MatchRules MatchRules::Custom(int overs) {
     int pp = std::max(1, (r.oversPerInnings * 3 + 9) / 10);
     r.phases = {{1, pp, 2}};
     r.defaultMaxOutsideCircle = 5;
+    r.weather = {std::min(5, r.oversPerInnings), 4.25, 0, 275};
     return r;
 }
 

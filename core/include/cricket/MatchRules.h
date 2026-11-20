@@ -52,6 +52,15 @@ struct SessionSchedule {
     bool dayNight = false;              // day-night Test: tea after session 1, dinner after session 2
 };
 
+// Weather settings. Values are approximations of typical playing
+// conditions (see docs/RAIN_RULE.md), chosen by us and configurable.
+struct WeatherRules {
+    int minOversForResult = 0;      // overs the side batting second must be able to face (T20 5, ODI 20)
+    double minutesPerOver = 4.0;    // converts lost time to overs (T20 ~4.25, ODI ~4.2, Test 4)
+    int bufferMinutes = 0;          // lost time absorbed (extra time) before any overs are cut
+    double fullInningsScore = 245;  // "G": what a full 50-over-scale innings is worth (rain rule)
+};
+
 struct MatchRules {
     Format format = Format::T20;
     int oversPerInnings = 20;     // 0 = unlimited (Test)
@@ -62,6 +71,7 @@ struct MatchRules {
     int followOnLead = 0;         // 0 = no follow-on
     int matchOverLimit = 0;       // optional hard cap on overs in the match before a draw (0 = none)
     SessionSchedule schedule;     // Test: days and sessions
+    WeatherRules weather;
     DrsRules drs = DrsRules::Icc();
     int widePenalty = 1;
     int noBallPenalty = 1;

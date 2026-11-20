@@ -9,6 +9,7 @@
 #include "cricket/Drs.h"
 #include "cricket/Innings.h"
 #include "cricket/MatchRules.h"
+#include "cricket/RainRule.h"
 
 namespace cricket {
 
@@ -38,6 +39,17 @@ struct DayClock {
     int makeUpBalls = 0;           // lost time still to be made up on later days
     int startDay = 0;              // day of the first ball (0 = not started)
     int ballsLostToday = 0;        // to weather / bad light (Stage C)
+};
+
+// One weather stoppage.
+struct RainRecord {
+    int inningsIndex = 0;
+    int minutes = 0;          // time lost
+    int bufferUsed = 0;       // minutes absorbed by extra time (limited overs)
+    int oversLost = 0;        // overs taken off (limited: total over both innings; Test: off the day)
+    int day = 0;              // Test day (0 for limited overs)
+    int newOversThis = 0;     // limited overs: innings lengths after the stoppage
+    int newOversSecond = 0;
 };
 
 // Law 41 penalty runs (5 by default), e.g. ball strikes a fielder's helmet
@@ -101,6 +113,26 @@ public:
     // Fielding captain takes the new ball (Test: after 80 overs).
     Status TakeNewBall();
 
+    // ---- Weather (rain, bad light) -----------------------------------
+    // Server/umpire actions. Limited overs: lost time (after any buffer) is
+    // converted to overs, which are taken off equally in the first innings
+    // or off the second innings, and the target is revised with the
+    // NON-OFFICIAL rain rule. Test: the time comes off the day and is made up
+    // on later days (up to 98 overs a day).
+    Status RainDelay(int minutes);
+    // Set innings lengths directly (what the umpires announce). Limited overs.
+    // oversSecondInnings = 0 means "same as this innings" during innings 1.
+    Status ReduceOvers(int oversThisInnings, int oversSecondInnings = 0);
+    // The rest of today's play is lost (Test).
+    Status LoseRestOfDay();
+    const std::vector<RainRecord>& RainLog() const { return rainLog_; }
+    bool RainAffected() const { return rainAffected_; }
+    // Rain-rule resources (percent) available to each limited-overs innings.
+    double RainResourcesFor(int inningsIndex) const { return resources_.at(inningsIndex); }
+    // Par score for the side batting second right now (rain rule); -1 if not chasing.
+    double ParScoreNow() const;
+    int PlannedOvers(int inningsIndex) const { return plannedOvers_.at(inningsIndex); }
+
     // ---- Test match schedule ------------------------------------------
     bool HasSchedule() const { return rules_.schedule.enabled; }
     const DayClock& Clock() const { return clock_; }
@@ -142,7 +174,11 @@ private:
     void RecomputeTarget();
     void RecordInterval(IntervalKind k, bool early);
     // Called after an over ends, an innings changes or time is lost.
-    void CheckSchedule(bool inningsJustChanged);
+    void CheckSchedule(bool inningsJustChanged, bool force = false);
+    void NoResult(const std::string& why);
+    bool LimitedOvers() const { return rules_.oversPerInnings > 0; }
+    // Shorten innings `idx` to `overs`, charging the lost resources.
+    Status CutInnings(int idx, int overs);
     int SessionEndBalls(int session) const;
     void StartDay(int day);
 
@@ -159,6 +195,11 @@ private:
     std::vector<PenaltyRecord> penalties_;
     std::array<int, 2> pendingPenalty_{0, 0};
     DayClock clock_;
+    std::vector<RainRecord> rainLog_;
+    bool rainAffected_ = false;
+    int bufferUsed_ = 0;
+    std::array<int, 2> plannedOvers_{0, 0};
+    std::array<double, 2> resources_{0, 0};
     std::vector<IntervalRecord> intervals_;
 };
 
