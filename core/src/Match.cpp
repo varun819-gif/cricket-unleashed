@@ -50,22 +50,27 @@ Status Match::ValidateRules(const MatchRules& r) {
     return Status::Ok();
 }
 
-Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
-    : rules_(std::move(rules)), teams_(std::move(teams)), battingFirst_(battingFirst) {
-    if (battingFirst != 0 && battingFirst != 1) throw std::invalid_argument("battingFirst must be 0 or 1");
-    if (Status s = ValidateRules(rules_); !s) throw std::invalid_argument(s.error);
-    if (rules_.drs.reviewsPerInnings < 0 || rules_.drs.reviewTimerSeconds < 0)
-        throw std::invalid_argument("DRS settings cannot be negative");
-    for (const auto& t : teams_) {
-        Status s = ValidateTeam(t, rules_.squadSize);
-        if (!s) throw std::invalid_argument(s.error);
-    }
-    plannedOvers_ = {rules_.oversPerInnings, rules_.oversPerInnings};
-    if (rules_.schedule.enabled) {
-        const auto& sc = rules_.schedule;
+Status Match::ValidateSetup(const MatchRules& r, const std::array<Team, 2>& teams, int battingFirst) {
+    if (battingFirst != 0 && battingFirst != 1) return Status::Err("battingFirst must be 0 or 1");
+    if (Status s = ValidateRules(r); !s) return s;
+    if (r.drs.reviewsPerInnings < 0 || r.drs.reviewTimerSeconds < 0)
+        return Status::Err("DRS settings cannot be negative");
+    for (const auto& t : teams)
+        if (Status s = ValidateTeam(t, r.squadSize); !s) return s;
+    if (r.schedule.enabled) {
+        const auto& sc = r.schedule;
         if (sc.days < 1 || sc.oversPerDay < 1 || sc.sessionsPerDay < 1 || sc.maxOversPerDay < sc.oversPerDay ||
             sc.oversLostPerInningsChange < 0 || sc.intervalNearOvers < 0)
-            throw std::invalid_argument("invalid session schedule");
+            return Status::Err("invalid session schedule");
+    }
+    return Status::Ok();
+}
+
+Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
+    : rules_(std::move(rules)), teams_(std::move(teams)), battingFirst_(battingFirst) {
+    if (Status s = ValidateSetup(rules_, teams_, battingFirst); !s) CU_INVALID_ARGUMENT(s.error);
+    plannedOvers_ = {rules_.oversPerInnings, rules_.oversPerInnings};
+    if (rules_.schedule.enabled) {
         StartDay(1);
     }
     StartInnings(battingFirst_, std::nullopt);

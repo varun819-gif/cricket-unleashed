@@ -66,6 +66,17 @@ target_compile_definitions(cricket_controller_host PRIVATE CRICKET_SOURCE_DIR="$
 add_executable(cricket_sim tools/sim/main.cpp)
 target_link_libraries(cricket_sim PRIVATE cricket_core)
 
+# Unreal Engine builds game code without C++ exceptions and RTTI. This
+# compile-only check keeps the core and the phone-controller code ready for
+# that (see docs/UNREAL_DEVELOPMENT_PLAN.md).
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  get_target_property(_core_src cricket_core SOURCES)
+  get_target_property(_ctl_src cricket_controller SOURCES)
+  add_library(cricket_unreal_compat_check OBJECT ${_core_src} ${_ctl_src})
+  target_include_directories(cricket_unreal_compat_check PRIVATE core/include controller/include)
+  target_compile_options(cricket_unreal_compat_check PRIVATE -fno-exceptions -fno-rtti)
+endif()
+
 enable_testing()
 add_executable(cricket_tests
   core/tests/TestMain.cpp

@@ -93,6 +93,9 @@ public:
     static Status ValidateTeam(const Team& t, int squadSize);
     // Sanity limits on playing conditions (protects against corrupt saves too).
     static Status ValidateRules(const MatchRules& r);
+    // Everything the constructor checks. Call this first: the constructor
+    // throws (or, without exceptions, aborts) on a bad setup.
+    static Status ValidateSetup(const MatchRules& r, const std::array<Team, 2>& teams, int battingFirst);
 
     // Pass-through actions on the current innings (with extra team checks).
     Status SetOpeners(int striker, int nonStriker);

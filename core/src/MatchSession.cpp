@@ -31,11 +31,7 @@ MatchSession::MatchSession(MatchRules rules, std::array<Team, 2> teams, uint64_t
       seed_(serverSeed),
       toss_(serverSeed),
       ai_(serverSeed ^ 0x9e3779b97f4a7c15ULL) {
-    if (Status s = Match::ValidateRules(rules_); !s) throw std::invalid_argument(s.error);
-    for (const auto& t : teams_) {
-        Status s = Match::ValidateTeam(t, rules_.squadSize);
-        if (!s) throw std::invalid_argument(s.error);
-    }
+    if (Status s = Match::ValidateSetup(rules_, teams_, 0); !s) CU_INVALID_ARGUMENT(s.error);
     fields_[0] = fields_[1] = FieldSetup::FromPreset(FieldPreset::Powerplay);
 }
 

@@ -609,12 +609,11 @@ MatchLoad BuildMatch(const std::vector<std::string>& lines, size_t i, bool requi
     }
     ++i;
     if (i < lines.size() && lines[i] == "begin") ++i;  // journal marker
-    try {
-        out.match = std::make_unique<Match>(rules, teams, battingFirst);
-    } catch (const std::exception& e) {
-        out.status = Status::Err(std::string("invalid match setup: ") + e.what());
+    if (Status v = Match::ValidateSetup(rules, teams, battingFirst); !v) {
+        out.status = Status::Err("invalid match setup: " + v.error);
         return out;
     }
+    out.match = std::make_unique<Match>(rules, teams, battingFirst);
     for (; i < lines.size(); ++i) {
         if (lines[i].rfind("end", 0) == 0) break;
         MatchAction a;
@@ -674,12 +673,11 @@ SessionLoad BuildSession(const std::vector<std::string>& lines, size_t i, bool r
     }
     ++i;
     if (i < lines.size() && lines[i] == "begin") ++i;
-    try {
-        out.session = std::make_unique<MatchSession>(rules, teams, seed);
-    } catch (const std::exception& e) {
-        out.status = Status::Err(std::string("invalid session setup: ") + e.what());
+    if (Status v = Match::ValidateSetup(rules, teams, 0); !v) {
+        out.status = Status::Err("invalid session setup: " + v.error);
         return out;
     }
+    out.session = std::make_unique<MatchSession>(rules, teams, seed);
     for (; i < lines.size(); ++i) {
         if (lines[i].rfind("end", 0) == 0) break;
         SessionInput x;

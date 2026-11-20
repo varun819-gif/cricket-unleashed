@@ -4,6 +4,9 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,3 +71,13 @@ struct Status {
 };
 
 }  // namespace cricket
+
+// Bad setup passed to a constructor (always a programming error: callers
+// check with Match::ValidateSetup first). Unreal Engine builds C++ without
+// exceptions, so there this stops the program with a message instead.
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#define CU_INVALID_ARGUMENT(msg) throw std::invalid_argument(msg)
+#else
+#define CU_INVALID_ARGUMENT(msg) \
+    (std::fprintf(stderr, "cricket: invalid argument: %s\n", std::string(msg).c_str()), std::abort())
+#endif
