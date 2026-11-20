@@ -44,6 +44,14 @@ add_library(cricket_controller
 target_include_directories(cricket_controller PUBLIC controller/include)
 target_link_libraries(cricket_controller PUBLIC cricket_core)
 
+# Online multiplayer: accounts, rooms, matchmaking, ratings, live matches.
+add_library(cricket_online
+  online/src/Store.cpp
+  online/src/OnlineServer.cpp
+)
+target_include_directories(cricket_online PUBLIC online/include)
+target_link_libraries(cricket_online PUBLIC cricket_controller)
+
 # TV/PC side of the phone controller (stands in for the game until Unreal).
 add_executable(cricket_controller_host tools/controller_host/main.cpp)
 target_link_libraries(cricket_controller_host PRIVATE cricket_controller)
@@ -72,8 +80,9 @@ add_executable(cricket_tests
   controller/tests/ControllerHubTests.cpp
   controller/tests/MatchHostTests.cpp
   controller/tests/LocalServerTests.cpp
+  online/tests/OnlineTests.cpp
 )
-target_link_libraries(cricket_tests PRIVATE cricket_core cricket_controller)
+target_link_libraries(cricket_tests PRIVATE cricket_core cricket_controller cricket_online)
 # Lets tests read source files (information-hiding scan of the AI code).
 target_compile_definitions(cricket_tests PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME cricket_tests COMMAND cricket_tests)
