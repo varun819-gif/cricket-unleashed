@@ -76,8 +76,9 @@ MatchRules MatchRules::Test(int days) {
     r.maxOversPerBowler = 0;
     r.inningsPerSide = 2;
     r.freeHitOnNoBall = false;
-    r.followOnLead = days >= 5 ? 200 : days >= 3 ? 150 : 100;
-    r.matchOverLimit = days * 90;
+    r.followOnLead = FollowOnLeadForDays(days);
+    r.schedule.enabled = true;
+    r.schedule.days = std::max(1, days);
     r.defaultMaxOutsideCircle = -1;
     r.newBallAfterOvers = 80;
     return r;
@@ -94,6 +95,13 @@ MatchRules MatchRules::Custom(int overs) {
     r.phases = {{1, pp, 2}};
     r.defaultMaxOutsideCircle = 5;
     return r;
+}
+
+int MatchRules::FollowOnLeadForDays(int days) {
+    if (days >= 5) return 200;
+    if (days >= 3) return 150;
+    if (days == 2) return 100;
+    return 75;
 }
 
 MatchRules MatchRules::Scaled(int overs) const {

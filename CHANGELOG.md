@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0] - 2026-11-20 - Rules milestone, Stage B: Test match sessions
+
+### Added
+- Test match schedule (`SessionSchedule`): 90 overs a day in 3 sessions,
+  lunch / tea / stumps (tea / dinner for day-night), day progression, 2 overs
+  lost per change of innings, early interval when an innings ends within 10
+  minutes of a break (Law 11.4), match drawn at the last day's stumps.
+- Follow-on margin by days left when play started (Law 14.1: 200/150/100/75).
+- `IntervalRecord` history in every format (innings breaks included).
+  `DayClock`, `BallsLeftInSession`, `BallsLeftToday`.
+- Session: pauses for lunch / tea / dinner / stumps when humans play.
+  `ResumePlay` command (all humans ready) and server `ResumeAfterInterval`.
+  Events `lunch`, `tea`, `dinner`, `stumps`, `innings-break`, `ready`,
+  `resume`. Commentary for breaks (English + Hindi).
+- `docs/TEST_SESSIONS.md`. 15 new tests (140 total).
+
+### Changed
+- `MatchRules::Test()` uses the session schedule instead of the old flat
+  `matchOverLimit` (still available as an optional hard cap). A 1-day Test
+  still draws after 90 overs as before.
+
 ## [0.3.0] - 2026-11-20 - Rules milestone, Stage A: DRS completed
 
 ### Added

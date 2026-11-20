@@ -33,6 +33,7 @@ public:
     std::vector<CommentaryLine> DescribeDecision(const Match& m, const DecisionRecord& d);
     std::vector<CommentaryLine> DescribePenalty(const Match& m, const PenaltyRecord& p);
     std::vector<CommentaryLine> DescribeNewBall(const Match& m);
+    std::vector<CommentaryLine> DescribeInterval(const Match& m, const IntervalRecord& r);
     // A DRS reason in this engine's language.
     std::string Reason(ReasonCode r) const;
 

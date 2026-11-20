@@ -73,6 +73,7 @@ Pending MatchSession::WaitingFor() const {
     if (!match_) return {"none", -1};
     const Match& m = *match_;
     if (m.Phase() == MatchPhase::Complete) return {"none", -1};
+    if (paused_) return {"interval", -1};
     if (m.Phase() == MatchPhase::AwaitingFollowOnDecision) return {"follow-on", m.AllInnings()[0].BattingSide()};
     if (m.HasPendingDecision()) return {"review", m.ReviewEntitledSide(), reviewDeadlineMs_ ? *reviewDeadlineMs_ : -1};
     switch (m.Current().State()) {
@@ -100,6 +101,25 @@ void MatchSession::AfterMatchChange() {
         if (inn.Target()) t += ", target " + std::to_string(*inn.Target());
         Log("innings", t);
         lastInningsSeen_++;
+    }
+    const auto& iv = match_->Intervals();
+    while (intervalsSeen_ < iv.size()) {
+        const IntervalRecord& r = iv[intervalsSeen_++];
+        const std::string score = teams_[r.battingSide].name + " " + std::to_string(r.total) + "/" +
+                                  std::to_string(r.wickets) + " (" + std::to_string(r.overs) +
+                                  (r.balls ? "." + std::to_string(r.balls) : std::string()) + ")";
+        if (r.kind == IntervalKind::InningsBreak) {
+            Log("innings-break", "Innings break. " + score);
+            continue;
+        }
+        std::string kind = ToString(r.kind);
+        Log(kind, std::string(kind == "stumps" ? "Stumps" : kind == "lunch" ? "Lunch" : kind == "tea" ? "Tea" : "Dinner") +
+                      " on day " + std::to_string(r.day) + ": " + score + (r.early ? " (taken early, innings ended)" : ""));
+        // Humans get a real break; AI-only matches play straight on.
+        if (match_->Phase() != MatchPhase::Complete && (IsHuman(0) || IsHuman(1))) {
+            paused_ = true;
+            ready_ = {!IsHuman(0), !IsHuman(1)};
+        }
     }
     if (match_->Phase() == MatchPhase::AwaitingFollowOnDecision)
         Log("follow-on", teams_[all[0].BattingSide()].name + " may enforce the follow-on");
@@ -210,6 +230,12 @@ Status MatchSession::Apply(int side, const Command& c) {
             Log("new-ball", teams_[side].name + " take the new ball after " +
                                 std::to_string(match_->Current().CompletedOvers()) + " overs");
             return s;
+        case CommandType::ResumePlay:
+            if (p.what != "interval") return Status::Err("play is not paused");
+            ready_[side] = true;
+            Log("ready", teams_[side].name + " ready to resume");
+            if (ready_[0] && ready_[1]) Resume();
+            return Status::Ok();
         case CommandType::FollowOn:
             if (!(s = mustBe("follow-on", p.side))) return s;
             if (!(s = match_->DecideFollowOn(c.a != 0))) return s;
@@ -325,6 +351,22 @@ Status MatchSession::AwardPenaltyRuns(int side, int runs, const std::string& rea
     Log("penalty", std::to_string(runs) + " penalty runs to " + teams_[side].name + " (" + reason + ")" +
                        (p.inningsIndex < 0 ? ", added when they bat" : ""));
     AfterMatchChange();
+    RunAi();
+    return Status::Ok();
+}
+
+void MatchSession::Resume() {
+    paused_ = false;
+    ready_ = {false, false};
+    const DayClock& k = match_->Clock();
+    Log("resume", match_->HasSchedule() ? "Play resumes: day " + std::to_string(k.day) + ", session " +
+                                              std::to_string(k.session)
+                                        : std::string("Play resumes"));
+}
+
+Status MatchSession::ResumeAfterInterval() {
+    if (!paused_) return Status::Err("play is not paused");
+    Resume();
     RunAi();
     return Status::Ok();
 }

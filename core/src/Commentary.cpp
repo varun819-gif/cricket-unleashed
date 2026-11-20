@@ -69,6 +69,11 @@ const Pool& English() {
         {"penalty", {"Five penalty runs to {team}! {reason}.", "Penalty runs awarded to {team}: {reason}."}},
         {"newball", {"{team} take the new ball.", "The new ball is out for {team}."}},
         {"shortrun", {"One short! The umpire takes a run away.", "Short run called. That run won't count."}},
+        {"interval.lunch", {"That's lunch on day {day}. {team} are {score}.", "The players head off for lunch. {team} {score}."}},
+        {"interval.tea", {"Tea on day {day}. {team} {score}.", "Time for tea. {team} have reached {score}."}},
+        {"interval.dinner", {"The dinner break, day {day}. {team} {score}.", "Off they go for dinner. {team} {score}."}},
+        {"interval.stumps", {"Stumps on day {day}! {team} {score}.", "That's the end of day {day}. {team} {score}."}},
+        {"interval.innings", {"That's the end of the innings. {team} {score}.", "Innings break. {team} finish on {score}."}},
     };
     return p;
 }
@@ -120,6 +125,11 @@ const Pool& Hindi() {
         {"penalty", {"{team} को पाँच पेनल्टी रन! {reason}।"}},
         {"newball", {"{team} ने नई गेंद ली।"}},
         {"shortrun", {"एक रन छोटा! अंपायर ने एक रन काट दिया।"}},
+        {"interval.lunch", {"दिन {day} का लंच। {team} {score}।"}},
+        {"interval.tea", {"दिन {day} की चाय। {team} {score}।"}},
+        {"interval.dinner", {"दिन {day} का डिनर ब्रेक। {team} {score}।"}},
+        {"interval.stumps", {"दिन {day} का खेल ख़त्म! {team} {score}।"}},
+        {"interval.innings", {"पारी समाप्त। {team} {score}।"}},
     };
     return p;
 }
@@ -330,6 +340,21 @@ std::vector<CommentaryLine> CommentaryEngine::DescribeDecision(const Match& m, c
 
 std::vector<CommentaryLine> CommentaryEngine::DescribePenalty(const Match& m, const PenaltyRecord& p) {
     return {Pick("Lead", "penalty", {{"team", m.GetTeam(p.side).name}, {"reason", p.reason}})};
+}
+
+std::vector<CommentaryLine> CommentaryEngine::DescribeInterval(const Match& m, const IntervalRecord& r) {
+    const char* cat = "interval.innings";
+    switch (r.kind) {
+        case IntervalKind::Lunch: cat = "interval.lunch"; break;
+        case IntervalKind::Tea: cat = "interval.tea"; break;
+        case IntervalKind::Dinner: cat = "interval.dinner"; break;
+        case IntervalKind::Stumps: cat = "interval.stumps"; break;
+        case IntervalKind::InningsBreak: break;
+    }
+    return {Pick("Lead", cat,
+                 {{"day", std::to_string(r.day)},
+                  {"team", m.GetTeam(r.battingSide).name},
+                  {"score", std::to_string(r.total) + "/" + std::to_string(r.wickets)}})};
 }
 
 std::vector<CommentaryLine> CommentaryEngine::DescribeNewBall(const Match& m) {

@@ -45,6 +45,7 @@ add_executable(cricket_tests
   core/tests/NoBallTests.cpp
   core/tests/DrsConfigTests.cpp
   core/tests/DrsCompleteTests.cpp
+  core/tests/TestSessionTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core)
 # Lets tests read source files (information-hiding scan of the AI code).

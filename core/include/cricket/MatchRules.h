@@ -39,6 +39,19 @@ struct DrsRules {
     static bool FromName(const std::string& name, DrsRules* out);
 };
 
+// Test match day structure (overs-based approximation of the clock; see
+// docs/TEST_SESSIONS.md). Disabled for limited-overs formats.
+struct SessionSchedule {
+    bool enabled = false;
+    int days = 5;
+    int oversPerDay = 90;               // minimum overs per day (ICC Test playing conditions)
+    int sessionsPerDay = 3;             // lunch and tea (or tea and dinner) between them
+    int oversLostPerInningsChange = 2;  // 10-minute changeover = 2 overs off the day
+    int maxOversPerDay = 98;            // lost time may be made up, up to 8 extra overs a day
+    int intervalNearOvers = 2;          // innings ends this close to a break -> break taken now (Law 11.4: 10 minutes)
+    bool dayNight = false;              // day-night Test: tea after session 1, dinner after session 2
+};
+
 struct MatchRules {
     Format format = Format::T20;
     int oversPerInnings = 20;     // 0 = unlimited (Test)
@@ -47,7 +60,8 @@ struct MatchRules {
     int inningsPerSide = 1;       // 1 limited overs, 2 Test
     bool freeHitOnNoBall = true;
     int followOnLead = 0;         // 0 = no follow-on
-    int matchOverLimit = 0;       // Test: total overs in match before a draw (0 = none)
+    int matchOverLimit = 0;       // optional hard cap on overs in the match before a draw (0 = none)
+    SessionSchedule schedule;     // Test: days and sessions
     DrsRules drs = DrsRules::Icc();
     int widePenalty = 1;
     int noBallPenalty = 1;
@@ -61,6 +75,9 @@ struct MatchRules {
     static MatchRules Test(int days = 5);
     // Shortened limited-overs game (handy for testing / quick match).
     static MatchRules Custom(int overs);
+
+    // Law 14.1: follow-on margin for a match of this many days (200/150/100/75).
+    static int FollowOnLeadForDays(int days);
 
     // Max fielders allowed outside the 30-yard circle for a 1-based over number.
     // Returns -1 when there is no restriction.

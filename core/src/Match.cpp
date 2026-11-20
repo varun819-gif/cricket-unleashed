@@ -5,6 +5,17 @@
 
 namespace cricket {
 
+const char* ToString(IntervalKind k) {
+    switch (k) {
+        case IntervalKind::Lunch: return "lunch";
+        case IntervalKind::Tea: return "tea";
+        case IntervalKind::Dinner: return "dinner";
+        case IntervalKind::Stumps: return "stumps";
+        case IntervalKind::InningsBreak: return "innings break";
+    }
+    return "?";
+}
+
 Status Match::ValidateTeam(const Team& t, int squadSize) {
     if (t.name.empty()) return Status::Err("team needs a name");
     if (static_cast<int>(t.xi.size()) != squadSize)
@@ -31,10 +42,108 @@ Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
         Status s = ValidateTeam(t, rules_.squadSize);
         if (!s) throw std::invalid_argument(s.error);
     }
+    if (rules_.schedule.enabled) {
+        const auto& sc = rules_.schedule;
+        if (sc.days < 1 || sc.oversPerDay < 1 || sc.sessionsPerDay < 1 || sc.maxOversPerDay < sc.oversPerDay ||
+            sc.oversLostPerInningsChange < 0 || sc.intervalNearOvers < 0)
+            throw std::invalid_argument("invalid session schedule");
+        StartDay(1);
+    }
     StartInnings(battingFirst_, std::nullopt);
 }
 
+// ---------------------------------------------------------------------------
+// Test match schedule (overs-based; see docs/TEST_SESSIONS.md)
+
+void Match::StartDay(int day) {
+    const auto& sc = rules_.schedule;
+    clock_.day = day;
+    clock_.session = 1;
+    clock_.ballsToday = 0;
+    clock_.ballsLostToday = 0;
+    // Lost time from earlier days is made up, up to the daily maximum.
+    const int extra = std::min(clock_.makeUpBalls, (sc.maxOversPerDay - sc.oversPerDay) * rules_.ballsPerOver);
+    clock_.makeUpBalls -= extra;
+    clock_.ballsAvailableToday = sc.oversPerDay * rules_.ballsPerOver + extra;
+}
+
+int Match::SessionEndBalls(int session) const {
+    // Sessions split the day's available overs evenly, ending on an over.
+    const int bpo = rules_.ballsPerOver;
+    const int overs = (clock_.ballsAvailableToday + clock_.ballsLostToday) / bpo;
+    int end = overs * session / rules_.schedule.sessionsPerDay * bpo;
+    // Time lost to weather comes out of the sessions where it happened, so
+    // the day still ends at its (reduced) available balls.
+    end = std::min(end, clock_.ballsAvailableToday);
+    return end;
+}
+
+int Match::BallsLeftInSession() const {
+    if (!rules_.schedule.enabled) return -1;
+    return std::max(0, SessionEndBalls(clock_.session) - clock_.ballsToday);
+}
+
+int Match::FollowOnThreshold() const {
+    if (!rules_.schedule.enabled) return rules_.followOnLead;
+    if (rules_.followOnLead <= 0) return 0;
+    const int started = clock_.startDay > 0 ? clock_.startDay : clock_.day;
+    return MatchRules::FollowOnLeadForDays(rules_.schedule.days - started + 1);
+}
+
+void Match::RecordInterval(IntervalKind k, bool early) {
+    IntervalRecord r;
+    r.kind = k;
+    r.day = clock_.day;
+    r.session = clock_.session;
+    const Innings& inn = Current();
+    r.inningsIndex = inn.Index();
+    r.battingSide = inn.BattingSide();
+    r.total = inn.Total();
+    r.wickets = inn.Wickets();
+    r.overs = inn.CompletedOvers();
+    r.balls = inn.BallsInOver();
+    r.early = early;
+    intervals_.push_back(r);
+}
+
+void Match::CheckSchedule(bool inningsJustChanged) {
+    if (!rules_.schedule.enabled || phase_ == MatchPhase::Complete) return;
+    const auto& sc = rules_.schedule;
+    const int bpo = rules_.ballsPerOver;
+    // Only between overs.
+    if (Current().BallsInOver() != 0 && !Current().IsComplete()) return;
+    if (clock_.ballsToday >= clock_.ballsAvailableToday) {
+        RecordInterval(IntervalKind::Stumps, false);
+        if (clock_.day >= sc.days) {
+            CallDraw();  // out of time on the last day
+            return;
+        }
+        StartDay(clock_.day + 1);
+        return;
+    }
+    if (clock_.session < sc.sessionsPerDay) {
+        const int left = SessionEndBalls(clock_.session) - clock_.ballsToday;
+        const bool near = inningsJustChanged && left <= sc.intervalNearOvers * bpo + bpo / 2;
+        if (left <= 0 || near) {
+            IntervalKind k;
+            if (sc.dayNight) k = clock_.session == 1 ? IntervalKind::Tea : IntervalKind::Dinner;
+            else k = clock_.session == 1 ? IntervalKind::Lunch : IntervalKind::Tea;
+            RecordInterval(k, left > 0);
+            clock_.session++;
+        }
+    }
+}
+
 void Match::StartInnings(int side, std::optional<int> target) {
+    const bool changeover = !innings_.empty();
+    if (changeover) {
+        RecordInterval(IntervalKind::InningsBreak, false);
+        if (rules_.schedule.enabled) {
+            // ICC Test playing conditions: 2 overs off the day per change of innings.
+            const int cut = rules_.schedule.oversLostPerInningsChange * rules_.ballsPerOver;
+            clock_.ballsAvailableToday = std::max(clock_.ballsToday, clock_.ballsAvailableToday - cut);
+        }
+    }
     innings_.emplace_back(rules_, side, static_cast<int>(innings_.size()), target);
     phase_ = MatchPhase::InProgress;
     if (pendingPenalty_[side] > 0) {  // Law 41.17: awarded before this side batted
@@ -88,22 +197,36 @@ Status Match::Bowl(const Delivery& d, DeliveryRecord* out) {
 
 Status Match::BowlInternal(const Delivery& d, DeliveryRecord* out) {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
-    Status s = Current().Bowl(d, out);
+    DeliveryRecord rec;
+    Status s = Current().Bowl(d, &rec);
     if (!s) return s;
+    if (out) *out = rec;
+    if (rec.legal) {
+        clock_.ballsToday++;
+        if (clock_.startDay == 0) clock_.startDay = clock_.day;
+    } else if (clock_.startDay == 0) {
+        clock_.startDay = clock_.day;
+    }
+    const size_t before = innings_.size();
     if (Current().IsComplete()) {
         Advance();
     } else if (rules_.matchOverLimit > 0 &&
                TotalLegalBallsInMatch() >= rules_.matchOverLimit * rules_.ballsPerOver) {
         CallDraw();  // out of time
     }
+    if (rec.overCompleted || rec.inningsCompleted) CheckSchedule(innings_.size() != before);
     return Status::Ok();
 }
 
 Status Match::Declare() {
     if (phase_ != MatchPhase::InProgress) return NotInProgress(phase_);
     if (pending_) return Status::Err("a decision is pending");
+    const size_t before = innings_.size();
     Status s = Current().Declare();
-    if (s) Advance();
+    if (s) {
+        Advance();
+        CheckSchedule(innings_.size() != before);
+    }
     return s;
 }
 
@@ -111,6 +234,7 @@ Status Match::DecideFollowOn(bool enforce) {
     if (phase_ != MatchPhase::AwaitingFollowOnDecision) return Status::Err("no follow-on decision is pending");
     followOn_ = enforce;
     StartInnings(enforce ? 1 - battingFirst_ : battingFirst_, std::nullopt);
+    CheckSchedule(true);
     return Status::Ok();
 }
 
@@ -183,7 +307,8 @@ void Match::Advance() {
             break;
         case 2: {
             int lead = innings_[0].Total() - innings_[1].Total();
-            if (rules_.followOnLead > 0 && lead >= rules_.followOnLead) phase_ = MatchPhase::AwaitingFollowOnDecision;
+            const int threshold = FollowOnThreshold();
+            if (threshold > 0 && lead >= threshold) phase_ = MatchPhase::AwaitingFollowOnDecision;
             else StartInnings(battingFirst_, std::nullopt);
             break;
         }
@@ -240,7 +365,11 @@ Status Match::AwardPenaltyRuns(int side, int runs, const std::string& reason) {
         }
     }
     penalties_.push_back(rec);
-    if (phase_ == MatchPhase::InProgress && Current().IsComplete()) Advance();
+    if (phase_ == MatchPhase::InProgress && Current().IsComplete()) {
+        const size_t before = innings_.size();
+        Advance();
+        CheckSchedule(innings_.size() != before);
+    }
     return Status::Ok();
 }
 

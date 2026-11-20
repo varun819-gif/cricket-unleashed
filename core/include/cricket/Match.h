@@ -14,6 +14,32 @@ namespace cricket {
 
 enum class MatchPhase { InProgress, AwaitingFollowOnDecision, Complete };
 
+// Breaks in play. Lunch / tea / dinner / stumps happen in Test matches with a
+// session schedule; an innings break is recorded in every format.
+enum class IntervalKind { Lunch, Tea, Dinner, Stumps, InningsBreak };
+const char* ToString(IntervalKind k);
+
+struct IntervalRecord {
+    IntervalKind kind = IntervalKind::Lunch;
+    int day = 1;
+    int session = 1;          // the session that just ended
+    int inningsIndex = 0;     // innings in progress (or just finished)
+    int battingSide = 0;
+    int total = 0, wickets = 0, overs = 0, balls = 0;
+    bool early = false;       // taken early because an innings ended close to it
+};
+
+// Where we are in a scheduled (Test) match.
+struct DayClock {
+    int day = 1;
+    int session = 1;
+    int ballsToday = 0;            // legal balls bowled today
+    int ballsAvailableToday = 0;   // after changeovers / lost time
+    int makeUpBalls = 0;           // lost time still to be made up on later days
+    int startDay = 0;              // day of the first ball (0 = not started)
+    int ballsLostToday = 0;        // to weather / bad light (Stage C)
+};
+
 // Law 41 penalty runs (5 by default), e.g. ball strikes a fielder's helmet
 // on the ground, illegal fielding, fielder wilfully obstructing a batter.
 struct PenaltyRecord {
@@ -75,6 +101,16 @@ public:
     // Fielding captain takes the new ball (Test: after 80 overs).
     Status TakeNewBall();
 
+    // ---- Test match schedule ------------------------------------------
+    bool HasSchedule() const { return rules_.schedule.enabled; }
+    const DayClock& Clock() const { return clock_; }
+    const std::vector<IntervalRecord>& Intervals() const { return intervals_; }
+    // Balls left before the current session ends / before stumps today.
+    int BallsLeftInSession() const;
+    int BallsLeftToday() const { return clock_.ballsAvailableToday - clock_.ballsToday; }
+    // Law 14.1: depends on the days left when play actually started.
+    int FollowOnThreshold() const;
+
     // Test only: the side that batted first decides after innings 2.
     Status DecideFollowOn(bool enforce);
     // Time ran out (Test) or the game was called off.
@@ -104,6 +140,11 @@ private:
     std::string Name(int side) const { return teams_[side].name; }
     int TotalLegalBallsInMatch() const;
     void RecomputeTarget();
+    void RecordInterval(IntervalKind k, bool early);
+    // Called after an over ends, an innings changes or time is lost.
+    void CheckSchedule(bool inningsJustChanged);
+    int SessionEndBalls(int session) const;
+    void StartDay(int day);
 
     MatchRules rules_;
     std::array<Team, 2> teams_;
@@ -117,6 +158,8 @@ private:
     std::vector<DecisionRecord> decisions_;
     std::vector<PenaltyRecord> penalties_;
     std::array<int, 2> pendingPenalty_{0, 0};
+    DayClock clock_;
+    std::vector<IntervalRecord> intervals_;
 };
 
 }  // namespace cricket

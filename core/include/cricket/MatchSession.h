@@ -37,6 +37,7 @@ enum class CommandType {
     FollowOn,        // a = 1 enforce / 0 bat again
     Review,          // a = 1 review the pending decision / 0 accept it
     TakeNewBall,     // fielding captain, when the new ball is due (Test)
+    ResumePlay,      // player is ready to continue after lunch / tea / dinner / stumps
 };
 
 struct Command {
@@ -58,7 +59,8 @@ struct SessionEvent {
 // What the session is waiting for next, and from which side.
 struct Pending {
     // "toss-call", "toss-decision", "openers", "bowler", "batter", "follow-on",
-    // "review" (side = who may review), "delivery", "none"
+    // "review" (side = who may review), "interval" (a Test break, waiting for
+    // ResumePlay from every human player or the server), "delivery", "none"
     std::string what;
     int side = -1;
     // For "review": server time (ms) when the review window closes; -1 = no timer.
@@ -79,6 +81,9 @@ public:
     Status ResolveAppeal(const DecisionCase& c);
     // Server-side: the review timer ran out, so the on-field call stands.
     Status ExpireReviewWindow();
+    // Server-side: end the current break (e.g. its timer ran out).
+    Status ResumeAfterInterval();
+    bool IsPaused() const { return paused_; }
     // Umpires award Law 41 penalty runs (server-side; never from a client).
     Status AwardPenaltyRuns(int side, int runs, const std::string& reason);
 
@@ -114,6 +119,7 @@ private:
     void LogDecision(const DecisionRecord& d);
     Status FinishDecision(Status s, const DecisionRecord& d, const DeliveryRecord& ball);
     Status TimeOutReview();
+    void Resume();
     bool IsHuman(int side) const;
     int SideOf(const std::string& player) const;
 
@@ -130,6 +136,9 @@ private:
     int64_t nowMs_ = 0;
     std::optional<int64_t> reviewDeadlineMs_;
     bool resultLogged_ = false;
+    size_t intervalsSeen_ = 0;
+    bool paused_ = false;
+    std::array<bool, 2> ready_{false, false};
 };
 
 }  // namespace cricket
