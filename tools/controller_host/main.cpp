@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     if (format == "odi") rules = MatchRules::ODI();
     else if (format == "test") rules = MatchRules::Test();
     else if (format.rfind("overs=", 0) == 0) rules = MatchRules::Custom(std::atoi(format.c_str() + 6));
-    auto all = FictionalTeams();
+    auto all = NationalTeams();  // India vs Pakistan (fictional players)
 
     ControllerHub hub;
     if (!devicesFile.empty()) {

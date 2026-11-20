@@ -58,6 +58,9 @@ struct OnlineConfig {
     int rankedUnlockMatches = 3;          // full matches needed before ranked (slows fake-account farming)
     int maxWrongRoomCodesPerMinute = 10;  // stops guessing room codes
     int64_t leaderboardCacheMs = 15000;
+    // Admin access for moderation (docs/MODERATION.md). Empty = admin off.
+    // cricket_server keeps it in <data>/admin.token (private to that machine).
+    std::string adminToken;
     ctl::HostConfig host;                 // ball timings (serverTimingCheck is forced on)
 };
 
@@ -139,6 +142,7 @@ private:
         std::deque<int64_t> rtt;          // recent server-measured round trips
         int64_t lastPingAt = 0;
         bool closing = false;
+        bool admin = false;
     };
     struct Room {
         std::string code, host, guest, format;
@@ -164,6 +168,11 @@ private:
     void OnRequest(ConnId c, Conn& k, const Json& j, int64_t now);
     void OnLogin(ConnId c, Conn& k, const Account& a, int64_t seq, int64_t now, const std::string& token);
     void OnAction(ConnId c, Conn& k, const Json& j, int64_t now);
+    void OnAdmin(ConnId c, const Json& j, int64_t now);
+    void OnReport(ConnId c, Conn& k, const Json& j, int64_t now);
+    // Removes a banned player from rooms, queues and matches, and disconnects them.
+    void EnforceBan(const std::string& account, int64_t now);
+    Json BanJson(const Account& a) const;
     void RoomCreate(ConnId c, Conn& k, const Json& j, int64_t now);
     void RoomJoin(ConnId c, Conn& k, const Json& j, int64_t now);
     void RoomLeave(const std::string& account, bool notify);
@@ -179,6 +188,7 @@ private:
                       std::array<std::string, 2> teams, int64_t now);
     void AttachMatch(const std::string& account, OnlineMatch& m);
     void RunMatch(OnlineMatch& m, int64_t now);
+    void AbandonSide(OnlineMatch& m, int side, const std::string& why, int64_t now);
     void FinishMatch(OnlineMatch& m, int winner, const std::string& outcome, const std::string& summary,
                      int64_t now);
     void WriteMeta(const OnlineMatch& m);
@@ -199,6 +209,7 @@ private:
     std::vector<QueueEntry> queue_;
     std::map<std::string, std::unique_ptr<OnlineMatch>> matches_;
     std::deque<int64_t> guestTimes_;
+    std::deque<int64_t> adminFailures_;
     uint64_t matchCounter_ = 0;
     std::map<std::string, std::pair<int64_t, Json>> boardCache_;  // request -> (made at, board)
     int64_t now_ = 0;

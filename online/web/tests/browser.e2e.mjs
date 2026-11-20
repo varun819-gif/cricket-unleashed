@@ -81,20 +81,20 @@ try {
   check((await a.textContent('#me')).includes('India'), 'server region India shown');
   if (shots) await a.screenshot({ path: path.join(shots, 'online-lobby.png'), fullPage: true });
 
-  await a.selectOption('#team', 'Ganga Royals');
+  await a.selectOption('#team', 'India');
   await a.selectOption('#format', 'overs=2');
   await a.tap('#createRoom');
   await a.waitForSelector('#roomCard', { state: 'visible' });
   const code = (await a.textContent('#roomCode')).trim();
   check(/^[A-HJ-NP-Z2-9]{6}$/.test(code), 'room code shown: ' + code);
 
-  // B first tries the same team (refused), then picks Indus Falcons.
-  await b.selectOption('#team', 'Ganga Royals');
+  // B first tries the same team (refused), then picks Pakistan.
+  await b.selectOption('#team', 'India');
   await b.fill('#code', code.toLowerCase());
   await b.tap('#joinRoom');
   await b.waitForFunction(() => document.querySelector('#toast').textContent.includes('another team'));
   check(true, 'same team refused with a clear message');
-  await b.selectOption('#team', 'Indus Falcons');
+  await b.selectOption('#team', 'Pakistan');
   await b.tap('#joinRoom');
   await a.waitForFunction(() => document.querySelector('#roomPlayers').textContent.includes('Bilal'));
   check(true, 'host sees the friend join');
@@ -104,8 +104,8 @@ try {
   await a.waitForFunction(() => window.CUOnlineClient.status === 'connected');
   await b.waitForFunction(() => window.CUOnlineClient.status === 'connected');
   check(await a.locator('#lobby').isHidden(), 'lobby hidden during the match');
-  check((await a.textContent('#who')).includes('Ganga Royals'), 'A plays Ganga Royals');
-  check((await b.textContent('#who')).includes('Indus Falcons'), 'B plays Indus Falcons');
+  check((await a.textContent('#who')).includes('India'), 'A plays India');
+  check((await b.textContent('#who')).includes('Pakistan'), 'B plays Pakistan');
 
   const doneA = {}, doneB = {};
   let reloaded = false, shotMatch = false;

@@ -9,6 +9,22 @@
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
   const store = (() => { try { localStorage.setItem('cu.t', '1'); localStorage.removeItem('cu.t'); return localStorage; } catch (e) { return null; } })();
   let room = null, queued = null, ended = null, tab = 'stats';
+  let teamFlags = {};
+  let reporting = null;  // {id, name, match}
+  const countryFlag = { IN: 'IN', PK: 'PK', AU: 'AU', GB: 'ENG', ZA: 'ZA', NZ: 'NZ', LK: 'LK', BD: 'BD', AF: 'AF' };
+  // A flag picture from this site only (codes come from a fixed list, never from other players).
+  function flag(code) {
+    if (!code || !/^[A-Z]{2,3}$/.test(code)) return null;
+    const i = document.createElement('img');
+    i.className = 'flag'; i.alt = ''; i.src = 'flags/' + code + '.svg';
+    return i;
+  }
+  function withFlag(code, text) { const s = el('span'); const f = flag(code); if (f) s.append(f); s.append(text); return s; }
+  function showTeamFlag() {
+    const code = teamFlags[$('team').value];
+    $('teamFlag').hidden = !code;
+    if (code) $('teamFlag').src = 'flags/' + code + '.svg';
+  }
 
   function toast(msg) {
     const t = $('toast');
@@ -34,18 +50,28 @@
     $('endCard').hidden = !ended;
     if (s === 'failed') $('helpError').textContent = 'Problem: ' + ((client.lastDetail) || 'could not sign in') + '. You can create a new guest player.';
     if (s === 'unpaired' || s === 'failed') $('help').hidden = false;
-    if (s === 'replaced') { $('help').hidden = true; $('lobby').hidden = true; }
+    if (s === 'replaced' || s === 'banned') { $('help').hidden = true; $('lobby').hidden = true; }
+    $('bannedCard').hidden = s !== 'banned';
+    if (s === 'banned') {
+      const b = client.ban || {};
+      $('bannedText').textContent = (b.permanent ? 'This player is permanently banned.' : 'This player is banned until ' + new Date(b.until).toLocaleString() + '.') +
+        (b.reason ? ' Reason: ' + b.reason : '');
+    }
+    $('reportCard').hidden = !reporting;
+    if (reporting) $('reportTitle').textContent = 'Report ' + reporting.name;
     const p = client.profile;
     if (p) {
       const me = $('me');
-      me.replaceChildren(el('h2', p.name), el('p', 'Rating ' + p.rating + (p.country ? ' · ' + p.country : '') + ' · Server: ' + (p.region === 'in' ? 'India' : p.region)));
+      const h = el('h2'); h.append(withFlag(countryFlag[p.country], p.name));
+      me.replaceChildren(h, el('p', 'Rating ' + p.rating + (p.country ? ' · ' + p.country : '') + ' · Server: ' + (p.region === 'in' ? 'India' : p.region)));
     }
     if (queued) $('queueText').textContent = 'Finding a ' + queued.mode + ' opponent (' + queued.format + ')…';
     if (room) {
       $('roomCode').textContent = room.code;
       const list = $('roomPlayers');
-      list.replaceChildren(el('li', room.host.name + ' - ' + room.host.team + ' (host)'),
-        el('li', room.guest ? room.guest.name + ' - ' + room.guest.team : 'Waiting for your friend…'));
+      const li = (x) => { const n = el('li'); n.append(x); return n; };
+      list.replaceChildren(li(withFlag(teamFlags[room.host.team], room.host.name + ' - ' + room.host.team + ' (host)')),
+        room.guest ? li(withFlag(teamFlags[room.guest.team], room.guest.name + ' - ' + room.guest.team)) : el('li', 'Waiting for your friend…'));
       $('startRoom').hidden = !(p && room.host.id === p.id);
       $('startRoom').disabled = !room.guest;
     }
@@ -66,7 +92,9 @@
     team.replaceChildren(...r.teams.map((t) => { const o = el('option', t); o.value = t; return o; }));
     const names = { 'overs=2': '2 overs (quick)', 'overs=5': '5 overs', 'overs=10': '10 overs', t20: 'T20 (20 overs)', odi: 'ODI (50 overs)' };
     format.replaceChildren(...r.formats.map((f) => { const o = el('option', names[f] || f); o.value = f; return o; }));
+    teamFlags = r.flags || {};
     if (savedTeam && r.teams.indexOf(savedTeam) >= 0) team.value = savedTeam;
+    showTeamFlag();
     format.value = savedFormat && r.formats.indexOf(savedFormat) >= 0 ? savedFormat : 'overs=5';
   }
 
@@ -96,6 +124,12 @@
         tr.append(el('td', res, m.winner === mine ? 'win' : m.winner === 1 - mine ? 'loss' : ''),
           el('td', m.s0.team + ' ' + m.s0.total + '/' + m.s0.wickets + ' v ' + m.s1.team + ' ' + m.s1.total + '/' + m.s1.wickets),
           el('td', m.mode + (m.mode === 'ranked' ? ' (' + (mine ? m.d1 : m.d0) + ')' : '')));
+        const opp = mine ? m.s0 : m.s1;
+        if (opp.account) {
+          const rb = el('button', 'Report', 'ghost small report');
+          rb.addEventListener('click', () => { reporting = { id: opp.account, name: 'the ' + opp.team + ' player', match: m.id }; show(); });
+          const td = el('td'); td.append(rb); tr.append(td);
+        }
         t.append(tr);
       });
       body.replaceChildren(t);
@@ -105,7 +139,10 @@
       const rows = r.board.rows;
       if (!rows.length) return body.replaceChildren(el('p', 'Nobody on this leaderboard yet.'));
       const t = el('table');
-      rows.forEach((x) => { const tr = el('tr'); tr.append(el('td', '#' + x.rank), el('td', x.name + (x.country ? ' (' + x.country + ')' : '')), el('td', String(x.value))); t.append(tr); });
+      rows.forEach((x) => {
+        const tr = el('tr'); const who = el('td'); who.append(withFlag(countryFlag[x.country], x.name));
+        tr.append(el('td', '#' + x.rank), who, el('td', String(x.value))); t.append(tr);
+      });
       body.replaceChildren(t);
     }
   }
@@ -129,7 +166,7 @@
     $('helpError').textContent = '';
     client.createGuest($('gName').value.trim(), $('gCountry').value);
   });
-  $('team').addEventListener('change', () => { if (store) store.setItem('cu.team', $('team').value); });
+  $('team').addEventListener('change', () => { if (store) store.setItem('cu.team', $('team').value); showTeamFlag(); });
   $('format').addEventListener('change', () => { if (store) store.setItem('cu.format', $('format').value); });
   $('quick').addEventListener('click', () => req('queue', Object.assign({ mode: 'casual' }, choice())));
   $('ranked').addEventListener('click', () => req('queue', Object.assign({ mode: 'ranked' }, choice())));
@@ -140,6 +177,12 @@
   $('leaveRoom').addEventListener('click', async () => { if ((await req('room-leave')).ok) { room = null; show(); } });
   $('endOk').addEventListener('click', () => { ended = null; show(); showTab(tab); });
   $('concede').addEventListener('click', () => { if (window.confirm('Concede this match? It counts as a loss.')) req('concede'); });
+  $('reportCancel').addEventListener('click', () => { reporting = null; show(); });
+  $('reportSend').addEventListener('click', async () => {
+    if (!reporting) return;
+    const r = await req('report', { id: reporting.id, reason: $('reportReason').value, note: $('reportNote').value, match: reporting.match });
+    if (r.ok) { toast('Thanks - an admin will review it'); reporting = null; $('reportNote').value = ''; show(); }
+  });
   $('tabStats').addEventListener('click', () => showTab('stats'));
   $('tabHistory').addEventListener('click', () => showTab('history'));
   $('tabBoard').addEventListener('click', () => showTab('board'));

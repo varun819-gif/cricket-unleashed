@@ -119,13 +119,13 @@ test('two players finish a private-room match through a slow, unreliable connect
     await waitFor(() => a.client.status === 'lobby' && b.client.status === 'lobby', 10000, 'both in lobby');
     assert.ok(a.client.id && a.client.token, 'guest account saved');
     const teams = await a.client.request('teams');
-    assert.ok(teams.ok && teams.teams.includes('Ganga Royals'));
-    const room = await a.client.request('room-create', { format: 'overs=2', team: 'Ganga Royals' });
+    assert.ok(teams.ok && teams.teams.includes('India'));
+    const room = await a.client.request('room-create', { format: 'overs=2', team: 'India' });
     assert.ok(room.ok, room.err);
     assert.match(room.code, /^[A-HJ-NP-Z2-9]{6}$/);
-    const bad = await b.client.request('room-join', { code: room.code, team: 'Ganga Royals' });
+    const bad = await b.client.request('room-join', { code: room.code, team: 'India' });
     assert.ok(!bad.ok);
-    const join = await b.client.request('room-join', { code: room.code.toLowerCase(), team: 'Indus Falcons' });
+    const join = await b.client.request('room-join', { code: room.code.toLowerCase(), team: 'Pakistan' });
     assert.ok(join.ok, join.err);
     const start = await a.client.request('room-start');
     assert.ok(start.ok, start.err);
@@ -156,15 +156,16 @@ test('two players finish a private-room match through a slow, unreliable connect
 
 test('ranked matchmaking, then the server crashes mid-match and both players carry on', { timeout: 240000 }, async () => {
   const dir = tmp('crash');
-  let srv = await startServer(dir);
+  const quick = ['--ranked-unlock', '0'];  // brand-new test players may play ranked
+  let srv = await startServer(dir, quick);
   const proxy = await badInternet(srv.port, 0);
   let proxyTarget = srv.port;
   try {
     const a = player(proxy.port, 'Kabir');
     const b = player(proxy.port, 'Zain');
     await waitFor(() => a.client.status === 'lobby' && b.client.status === 'lobby', 10000, 'lobby');
-    assert.ok((await a.client.request('queue', { mode: 'ranked', format: 'overs=2', team: 'Ganga Royals' })).ok);
-    assert.ok((await b.client.request('queue', { mode: 'ranked', format: 'overs=2', team: 'Indus Falcons' })).ok);
+    assert.ok((await a.client.request('queue', { mode: 'ranked', format: 'overs=2', team: 'India' })).ok);
+    assert.ok((await b.client.request('queue', { mode: 'ranked', format: 'overs=2', team: 'Pakistan' })).ok);
     await waitFor(() => a.client.inMatch && b.client.inMatch, 5000, 'matched');
     assert.equal(a.client.match.mode, 'ranked');
     await waitFor(() => a.state && a.state.score && a.state.score.balls + a.state.score.overs * 6 >= 4, 60000, 'a few balls');
@@ -172,7 +173,7 @@ test('ranked matchmaking, then the server crashes mid-match and both players car
     // Power cut: the server dies without warning, then starts again.
     srv.proc.kill('SIGKILL');
     await new Promise((r) => setTimeout(r, 300));
-    srv = await startServer(dir);
+    srv = await startServer(dir, quick);
     proxyTarget = srv.port;
     proxy.close();
     // Clients reconnect to the same address: put a proxy back on that port.

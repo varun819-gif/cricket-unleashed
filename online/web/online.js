@@ -94,6 +94,13 @@
       ws.onerror = () => {};
     }
     onLogin(r) {
+      if (!r.ok && r.banned) {
+        // Banned: keep the account (a temporary ban ends), just stop.
+        this.loginFailed = true;
+        this.ban = r;
+        this.setStatus('banned', r.permanent ? 'permanently banned' : 'banned until ' + new Date(r.until).toLocaleString());
+        return;
+      }
       if (!r.ok) {
         // Unknown account or wrong token: this browser's account is gone.
         if (this.id) this.forget();
@@ -116,7 +123,7 @@
       this.ready = false;
       for (const [, r] of this.requests) r({ ok: false, err: 'connection lost' });
       this.requests.clear();
-      if (this.stopped || this.status === 'replaced' || this.loginFailed) { this.loginFailed = false; return; }
+      if (this.stopped || this.status === 'replaced' || this.status === 'banned' || this.loginFailed) { this.loginFailed = false; return; }
       // Internet dropped: try again with growing pauses (0.5 s ... 8 s).
       // The server keeps our place in a match for 2 minutes.
       this.setStatus('reconnecting');
@@ -179,6 +186,12 @@
           return;
         case 'replaced':
           this.setStatus('replaced');
+          return;
+        case 'banned':
+          this.inMatch = false;
+          this.ban = j;
+          this.loginFailed = true;  // don't reconnect
+          this.setStatus('banned', j.permanent ? 'permanently banned' : 'banned until ' + new Date(j.until).toLocaleString());
           return;
         case 'error':
           this.emit('error', j.why);

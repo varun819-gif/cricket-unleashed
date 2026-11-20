@@ -80,4 +80,24 @@ std::vector<Team> FictionalTeams() {
     return teams;
 }
 
+const std::vector<NationalTeamInfo>& NationalTeamList() {
+    static const std::vector<NationalTeamInfo> list = {
+        {"India", "IN", "Ganga Royals"},          {"Pakistan", "PK", "Indus Falcons"},
+        {"Australia", "AU", "Southern Cross"},    {"England", "ENG", "Albion Lions"},
+        {"South Africa", "ZA", "Cape Springers"}, {"New Zealand", "NZ", "Aotea Kauri"},
+        {"Sri Lanka", "LK", "Lanka Leopards"},    {"Bangladesh", "BD", "Delta Tigers"},
+        {"West Indies", "WI", "Caribbean Hurricanes"}, {"Afghanistan", "AF", "Hindu Kush Eagles"},
+    };
+    return list;
+}
+
+std::vector<Team> NationalTeams() {
+    std::vector<Team> teams = FictionalTeams();
+    const auto& list = NationalTeamList();
+    for (auto& t : teams)
+        for (const auto& n : list)
+            if (t.name == n.fictional) t.name = n.name;
+    return teams;
+}
+
 }  // namespace cricket

@@ -12,3 +12,6 @@
 button.small { font-size: 0.8rem; padding: 6px 10px; }
 .win { color: #7be08a; }
 .loss { color: #ff8a80; }
+.flag { width: 32px; height: 24px; border-radius: 3px; vertical-align: middle; margin-right: 6px; box-shadow: 0 0 0 1px rgba(255,255,255,0.25); }
+.teamrow { display: flex; align-items: center; gap: 4px; }
+.teamrow select { flex: 1; }

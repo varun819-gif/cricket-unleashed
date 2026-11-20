@@ -10,6 +10,7 @@
 
 #include "../../controller/tests/PhoneSim.h"
 #include "../../core/tests/Test.h"
+#include "cricket/online/Moderation.h"
 #include "cricket/online/OnlineServer.h"
 
 using namespace cricket;
@@ -219,9 +220,9 @@ struct RoomMatch {
     RoomMatch(World& world, const std::string& format = "overs=1") : w(world), a(world), b(world) {
         a.Guest("Asha", "IN");
         b.Guest("Bilal", "PK");
-        const int64_t s = a.Req("room-create", Json::Object().Set("format", format).Set("team", "Ganga Royals"));
+        const int64_t s = a.Req("room-create", Json::Object().Set("format", format).Set("team", "India"));
         const std::string code = a.Res(s)->Str("code");
-        b.Req("room-join", Json::Object().Set("code", code).Set("team", "Indus Falcons"));
+        b.Req("room-join", Json::Object().Set("code", code).Set("team", "Pakistan"));
         a.Req("room-start");
     }
 };
@@ -444,26 +445,26 @@ TEST(online_private_room_codes_and_rules) {
     a.Guest("Asha", "IN");
     b.Guest("Bilal", "PK");
     c.Guest("Chris", "AU");
-    CHECK(!a.Ok(a.Req("room-create", Json::Object().Set("format", "test").Set("team", "Ganga Royals"))));
+    CHECK(!a.Ok(a.Req("room-create", Json::Object().Set("format", "test").Set("team", "India"))));
     CHECK(!a.Ok(a.Req("room-create", Json::Object().Set("format", "overs=5").Set("team", "Mumbai XI"))));
-    CHECK(!a.Ok(a.Req("room-create", Json::Object().Set("format", "overs=51").Set("team", "Ganga Royals"))));
-    const int64_t s = a.Req("room-create", Json::Object().Set("format", "overs=5").Set("team", "Ganga Royals"));
+    CHECK(!a.Ok(a.Req("room-create", Json::Object().Set("format", "overs=51").Set("team", "India"))));
+    const int64_t s = a.Req("room-create", Json::Object().Set("format", "overs=5").Set("team", "India"));
     CHECK(a.Ok(s));
     const std::string code = a.Res(s)->Str("code");
     CHECK_EQ(code.size(), static_cast<size_t>(6));
     CHECK(code.find_first_not_of("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") == std::string::npos);
     CHECK_EQ(a.Err(a.Req("room-start")), std::string("waiting for a friend to join"));
-    CHECK_EQ(b.Err(b.Req("room-join", Json::Object().Set("code", "ZZZZZZ").Set("team", "Indus Falcons"))),
+    CHECK_EQ(b.Err(b.Req("room-join", Json::Object().Set("code", "ZZZZZZ").Set("team", "Pakistan"))),
              std::string("no room with that code"));
-    CHECK(b.Err(b.Req("room-join", Json::Object().Set("code", code).Set("team", "Ganga Royals")))
+    CHECK(b.Err(b.Req("room-join", Json::Object().Set("code", code).Set("team", "India")))
               .find("choose another team") != std::string::npos);
     // Codes are forgiving: lower case and spaces work.
     std::string typed = code;
     for (auto& ch : typed) ch = static_cast<char>(std::tolower(ch));
     typed.insert(3, " ");
-    CHECK(b.Ok(b.Req("room-join", Json::Object().Set("code", typed).Set("team", "Indus Falcons"))));
-    CHECK_EQ(a.Last("room")->Get("guest")->Str("team"), std::string("Indus Falcons"));
-    CHECK_EQ(c.Err(c.Req("room-join", Json::Object().Set("code", code).Set("team", "Southern Cross"))),
+    CHECK(b.Ok(b.Req("room-join", Json::Object().Set("code", typed).Set("team", "Pakistan"))));
+    CHECK_EQ(a.Last("room")->Get("guest")->Str("team"), std::string("Pakistan"));
+    CHECK_EQ(c.Err(c.Req("room-join", Json::Object().Set("code", code).Set("team", "Australia"))),
              std::string("room is full"));
     CHECK_EQ(b.Err(b.Req("room-start")), std::string("only the host can start"));
     // Host leaves: the room closes for the guest.
@@ -471,7 +472,7 @@ TEST(online_private_room_codes_and_rules) {
     CHECK_EQ(b.Count("room-closed"), 1);
     CHECK_EQ(w.server.Rooms(), static_cast<size_t>(0));
     // Unused rooms expire.
-    c.Req("room-create", Json::Object().Set("format", "t20").Set("team", "Southern Cross"));
+    c.Req("room-create", Json::Object().Set("format", "t20").Set("team", "Australia"));
     CHECK_EQ(w.server.Rooms(), static_cast<size_t>(1));
     w.Step(30 * 60 * 1000 + 1000);
     CHECK_EQ(w.server.Rooms(), static_cast<size_t>(0));
@@ -487,7 +488,7 @@ TEST(online_full_match_india_vs_pakistan_in_private_room) {
     CHECK_EQ(ma->Int("side"), 0);
     CHECK_EQ(mb->Int("side"), 1);
     CHECK_EQ(ma->Str("mode"), std::string("casual"));
-    CHECK_EQ(ma->Get("sides")->Items()[1].Str("team"), std::string("Indus Falcons"));
+    CHECK_EQ(ma->Get("sides")->Items()[1].Str("team"), std::string("Pakistan"));
     Bot ba(rm.a, 1), bb(rm.b, 2);
     CHECK(PlayOut(w, {&ba, &bb}));
     auto ea = rm.a.Last("end");
@@ -521,22 +522,22 @@ TEST(online_matchmaking_casual_ranked_and_team_clash) {
     a.Guest("A");
     b.Guest("B");
     c.Guest("C");
-    CHECK(!a.Ok(a.Req("queue", Json::Object().Set("mode", "silly").Set("team", "Ganga Royals"))));
-    a.Req("queue", Json::Object().Set("mode", "casual").Set("format", "overs=2").Set("team", "Ganga Royals"));
-    b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=2").Set("team", "Ganga Royals"));
+    CHECK(!a.Ok(a.Req("queue", Json::Object().Set("mode", "silly").Set("team", "India"))));
+    a.Req("queue", Json::Object().Set("mode", "casual").Set("format", "overs=2").Set("team", "India"));
+    b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=2").Set("team", "India"));
     w.Step();
     CHECK_EQ(w.server.Queued(), static_cast<size_t>(2));  // different modes don't mix
-    c.Req("queue", Json::Object().Set("mode", "casual").Set("format", "overs=2").Set("team", "Ganga Royals"));
+    c.Req("queue", Json::Object().Set("mode", "casual").Set("format", "overs=2").Set("team", "India"));
     w.Step();
     CHECK_EQ(w.server.Queued(), static_cast<size_t>(1));
     auto m = c.Last("match");
     CHECK(m.has_value());
-    // Both picked Ganga Royals: the later player gets the next team.
-    CHECK_EQ(m->Get("sides")->Items()[0].Str("team"), std::string("Ganga Royals"));
-    CHECK_EQ(m->Get("sides")->Items()[1].Str("team"), std::string("Indus Falcons"));
+    // Both picked India: the later player gets the next team.
+    CHECK_EQ(m->Get("sides")->Items()[0].Str("team"), std::string("India"));
+    CHECK_EQ(m->Get("sides")->Items()[1].Str("team"), std::string("Pakistan"));
     CHECK_EQ(m->Int("side"), 1);
     // Can't queue during a match; cancelling works.
-    CHECK(!a.Ok(a.Req("queue", Json::Object().Set("team", "Ganga Royals"))));
+    CHECK(!a.Ok(a.Req("queue", Json::Object().Set("team", "India"))));
     b.Req("queue-cancel");
     CHECK_EQ(w.server.Queued(), static_cast<size_t>(0));
 }
@@ -562,8 +563,8 @@ TEST(online_ranked_rating_band_widens_with_waiting) {
     }
     const int gap = w.store.Find(a.id)->rating - 1200;
     CHECK(gap > 150 && gap < 450);
-    a.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=2").Set("team", "Ganga Royals"));
-    b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=2").Set("team", "Indus Falcons"));
+    a.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=2").Set("team", "India"));
+    b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=2").Set("team", "Pakistan"));
     w.Step(100);
     CHECK_EQ(w.server.Queued(), static_cast<size_t>(2));  // too far apart at first
     const int64_t needSec = (gap - 100 + 24) / 25;
@@ -621,8 +622,8 @@ TEST(online_ranked_disconnect_is_a_forfeit) {
     Client a(w), b(w);
     a.Guest("A");
     b.Guest("B");
-    a.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=5").Set("team", "Ganga Royals"));
-    b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=5").Set("team", "Indus Falcons"));
+    a.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=5").Set("team", "India"));
+    b.Req("queue", Json::Object().Set("mode", "ranked").Set("format", "overs=5").Set("team", "Pakistan"));
     w.Step();
     Bot ba(a, 1), bb(b, 2);
     for (int i = 0; i < 4; ++i) {  // drops out right after the toss
@@ -843,19 +844,19 @@ TEST(online_ranked_unlocks_after_full_matches_and_code_guessing_limited) {
     cfg.rankedUnlockMatches = 1;
     World w(cfg);
     RoomMatch rm(w, "overs=1");
-    const int64_t q = rm.a.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Ganga Royals"));
+    const int64_t q = rm.a.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "India"));
     CHECK(rm.a.Err(q).find("finish your match") != std::string::npos);
     Bot ba(rm.a, 1), bb(rm.b, 2);
     CHECK(PlayOut(w, {&ba, &bb}));
-    CHECK(rm.a.Ok(rm.a.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Ganga Royals"))));
+    CHECK(rm.a.Ok(rm.a.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "India"))));
     Client c(w);
     c.Guest("New");
-    CHECK(c.Err(c.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Ganga Royals")))
+    CHECK(c.Err(c.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "India")))
               .find("unlock ranked") != std::string::npos);
-    CHECK(c.Ok(c.Req("queue", Json::Object().Set("mode", "casual").Set("team", "Ganga Royals"))));
+    CHECK(c.Ok(c.Req("queue", Json::Object().Set("mode", "casual").Set("team", "India"))));
     // Guessing room codes: 10 wrong tries a minute, then refused.
-    for (int i = 0; i < 10; ++i) c.Req("room-join", Json::Object().Set("code", "AAAAA" + std::string(1, 'A' + i)).Set("team", "Indus Falcons"));
-    CHECK(c.Err(c.Req("room-join", Json::Object().Set("code", "BBBBBB").Set("team", "Indus Falcons")))
+    for (int i = 0; i < 10; ++i) c.Req("room-join", Json::Object().Set("code", "AAAAA" + std::string(1, 'A' + i)).Set("team", "Pakistan"));
+    CHECK(c.Err(c.Req("room-join", Json::Object().Set("code", "BBBBBB").Set("team", "Pakistan")))
               .find("too many wrong codes") != std::string::npos);
 }
 
@@ -894,4 +895,114 @@ TEST(online_action_ids_survive_a_server_crash) {
     CHECK(a.Last("ack")->Flag("dup"));
     w.Step();
     CHECK_EQ(w.server.MatchById(matchId)->host->Session().Inputs().size(), before);
+}
+
+// ---------------------------------------------------------------- moderation
+
+TEST(online_name_filter) {
+    CHECK_EQ(NameProblem("Asha"), std::string(""));
+    CHECK_EQ(NameProblem("Virat Fan 18"), std::string(""));
+    CHECK_EQ(NameProblem("Sussex Dickson"), std::string(""));    // whole-word rule avoids false alarms
+    CHECK_EQ(NameProblem("Pakistan Zindabad"), std::string(""));
+    CHECK(!NameProblem("fuck you").empty());
+    CHECK(!NameProblem("F.u.C.k").empty());                      // joined up
+    CHECK(!NameProblem("Ch00tiya").empty());                     // look-alike digits
+    CHECK(!NameProblem("bhen chod").empty());
+    CHECK(!NameProblem("big Sh1t").empty());
+    CHECK(!NameProblem("paki").empty());
+    CHECK(!NameProblem("Official Admin").empty());
+    CHECK(!NameProblem("call 9876543210").empty());
+    CHECK(!NameProblem("www.spam.in").empty());
+}
+
+TEST(online_reports_bans_and_admin_review) {
+    OnlineConfig cfg = World::Cfg();
+    cfg.adminToken = std::string(43, 'k');
+    World w(cfg);
+    Client bad(w);
+    bad.Guest("Ch00tiya");
+    CHECK(bad.id.empty());  // blocked name
+    RoomMatch rm(w, "overs=1");
+    Bot ba(rm.a, 1), bb(rm.b, 2);
+    CHECK(PlayOut(w, {&ba, &bb}));
+    CHECK(!rm.a.Ok(rm.a.Req("profile", Json::Object().Set("name", "Admin Asha"))));
+    // Reports: only players you have played; one per player per day.
+    Client stranger(w);
+    stranger.Guest("Stranger");
+    CHECK(stranger.Err(stranger.Req("report", Json::Object().Set("id", rm.b.id).Set("reason", "abuse")))
+              .find("only report players you have played") != std::string::npos);
+    CHECK(!rm.a.Ok(rm.a.Req("report", Json::Object().Set("id", rm.b.id).Set("reason", "because"))));
+    const int64_t r1 = rm.a.Req("report", Json::Object().Set("id", rm.b.id).Set("reason", "cheating").Set("note", "<script>x</script>"));
+    CHECK(rm.a.Ok(r1));
+    const std::string reportId = rm.a.Res(r1)->Str("report");
+    CHECK(!rm.a.Ok(rm.a.Req("report", Json::Object().Set("id", rm.b.id).Set("reason", "abuse"))));
+    // Admin: wrong token is refused; 5 failures lock admin out.
+    Client wrong(w);
+    CHECK(!wrong.Ok(wrong.Req("admin-login", Json::Object().Set("token", "guess"))));
+    CHECK(wrong.closed);
+    Client admin(w);
+    CHECK(admin.Ok(admin.Req("admin-login", Json::Object().Set("token", cfg.adminToken))));
+    CHECK(!admin.Ok(admin.Req("queue", Json::Object().Set("team", "India"))));  // admins don't play
+    const int64_t lr = admin.Req("admin-reports");
+    CHECK_EQ(admin.Res(lr)->Get("reports")->Items().size(), static_cast<size_t>(1));
+    CHECK_EQ(admin.Res(lr)->Get("reports")->Items()[0].Get("target")->Str("name"), std::string("Bilal"));
+    // Temporary ban: B is disconnected and can't log in; hidden from leaderboards.
+    CHECK(!admin.Ok(admin.Req("admin-ban", Json::Object().Set("id", rm.b.id).Set("hours", 24))));  // reason needed
+    CHECK(admin.Ok(admin.Req("admin-ban", Json::Object().Set("id", rm.b.id).Set("hours", 24).Set("reason", "cheating").Set("report", reportId))));
+    w.Step();
+    CHECK(rm.b.closed);
+    CHECK_EQ(rm.b.Count("banned"), 1);
+    CHECK_EQ(w.store.Reports("open", 10).size(), static_cast<size_t>(0));
+    rm.b.inbox.clear();
+    CHECK(!rm.b.Login());
+    CHECK(rm.b.Last("res")->Flag("banned"));
+    const int64_t lb = rm.a.Req("leaderboard", Json::Object().Set("board", "matches"));
+    CHECK_EQ(rm.a.Res(lb)->Get("board")->Get("rows")->Items().size(), static_cast<size_t>(1));
+    // The ban ends by itself.
+    w.now += 25LL * 3600 * 1000;
+    CHECK(rm.b.Login());
+    // Permanent ban during a ranked match: forfeit, can never log in again.
+    Client c(w), d(w);
+    c.Guest("Cheat");
+    d.Guest("Honest");
+    c.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "India"));
+    d.Req("queue", Json::Object().Set("mode", "ranked").Set("team", "Pakistan"));
+    w.Step();
+    CHECK(w.server.MatchOf(c.id) != nullptr);
+    CHECK(admin.Ok(admin.Req("admin-ban", Json::Object().Set("id", c.id).Set("hours", 0).Set("reason", "bot"))));
+    w.Step();
+    CHECK_EQ(d.Last("end")->Get("record")->Str("outcome"), std::string("forfeit"));
+    CHECK_EQ(d.Last("end")->Get("record")->Int("winner"), 1);
+    w.now += 400LL * 24 * 3600 * 1000;
+    CHECK(!c.Login());
+    CHECK(c.Last("res")->Flag("permanent"));
+    // Unban and rename, all logged.
+    CHECK(admin.Ok(admin.Req("admin-unban", Json::Object().Set("id", c.id))));
+    CHECK(c.Login());
+    CHECK(admin.Ok(admin.Req("admin-rename", Json::Object().Set("id", c.id))));
+    CHECK(w.store.Find(c.id)->name.rfind("Player ", 0) == 0);
+}
+
+TEST(online_moderation_survives_restart) {
+    const std::string dir = TempDir("mod");
+    auto rnd = Counter(5);
+    std::string a, b, rid;
+    {
+        Store s;
+        CHECK_OK(s.Open(dir));
+        a = s.CreateGuest("A", "IN", 0, rnd).first.id;
+        b = s.CreateGuest("B", "PK", 0, rnd).first.id;
+        CHECK_OK(s.AddReport(a, b, "abuse", "", "rude", 10, rnd, &rid));
+        CHECK_OK(s.Ban(b, kPermanentBan, "abuse", "admin", 20));
+        CHECK_OK(s.ResolveReport(rid, "actioned", "banned", "admin", 30));
+        CHECK(!s.Ban(a, 5, "past", "admin", 40).ok);
+    }
+    Store s;
+    CHECK_OK(s.Open(dir));
+    CHECK(s.Find(b)->BannedAt(INT64_MAX - 1));
+    CHECK_EQ(s.ReportsAbout(b).size(), static_cast<size_t>(1));
+    CHECK_EQ(s.ReportsAbout(b)[0].status, std::string("actioned"));
+    const std::string log = ReadAll(dir + "/moderation.jsonl");
+    CHECK(log.find("ban-permanent") != std::string::npos);
+    CHECK(log.find("report-actioned") != std::string::npos);
 }

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Cricket Unleashed - Moderation</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="lobby.css">
+</head>
+<body>
+  <header id="bar"><span id="who">Moderation</span></header>
+  <section class="card" id="loginCard">
+    <h2>Admin sign-in</h2>
+    <p>Paste the token from <code>admin.token</code> in the server's data folder. It is not saved in this browser.</p>
+    <input id="token" type="password" autocomplete="off">
+    <button id="signIn">Sign in</button>
+    <p id="loginError" class="error"></p>
+  </section>
+  <section id="work" hidden>
+    <div class="card">
+      <div class="tabs">
+        <button id="tabOpen" class="ghost">Open reports</button>
+        <button id="tabDone" class="ghost">Closed reports</button>
+      </div>
+      <div id="reports"></div>
+    </div>
+    <div class="card" id="playerCard" hidden>
+      <h2 id="pName"></h2>
+      <p id="pInfo"></p>
+      <label>Reason (shown to the player) <input id="banReason" maxlength="200"></label>
+      <div class="grid2">
+        <button id="ban24">Ban 24 hours</button>
+        <button id="ban7d">Ban 7 days</button>
+        <button id="banPerm" class="ghost">Permanent ban</button>
+        <button id="unban" class="ghost">Lift ban</button>
+        <button id="rename" class="ghost">Reset name</button>
+        <button id="dismiss" class="ghost">Dismiss report</button>
+      </div>
+      <h2>Reports about this player</h2>
+      <div id="pReports"></div>
+      <h2>Recent matches</h2>
+      <div id="pHistory"></div>
+    </div>
+  </section>
+  <div id="toast" role="status"></div>
+  <script src="admin.js"></script>
+</body>
+</html>

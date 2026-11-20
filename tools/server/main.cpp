@@ -7,12 +7,13 @@
 // shows a health summary.
 //
 // Usage: cricket_server [--port N] [--bind ADDR] [--data DIR] [--web DIR]
-//          [--region in] [--grace-sec N] [--max-connections N] [--quiet]
+//          [--region in] [--grace-sec N] [--ranked-unlock N] [--max-connections N] [--quiet]
 //          [--exit-after-ms N]
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 
 #include <fcntl.h>
@@ -63,12 +64,13 @@ int main(int argc, char** argv) {
         else if (a == "--controller-web") controllerWeb = next();
         else if (a == "--region") cfg.region = next();
         else if (a == "--grace-sec") cfg.graceMs = std::atoll(next().c_str()) * 1000;
+        else if (a == "--ranked-unlock") cfg.rankedUnlockMatches = std::atoi(next().c_str());
         else if (a == "--max-connections") maxConnections = static_cast<size_t>(std::atoll(next().c_str()));
         else if (a == "--quiet") quiet = true;
         else if (a == "--exit-after-ms") exitAfter = std::atoll(next().c_str());
         else {
             std::cerr << "usage: cricket_server [--port N] [--bind ADDR] [--data DIR] [--web DIR] [--region in]\n"
-                         "         [--grace-sec N] [--max-connections N] [--quiet] [--exit-after-ms N]\n";
+                         "         [--grace-sec N] [--ranked-unlock N] [--max-connections N] [--quiet] [--exit-after-ms N]\n";
             return 2;
         }
     }
@@ -87,6 +89,22 @@ int main(int argc, char** argv) {
         std::cerr << "cannot open data folder: " << s.error << "\n";
         return 1;
     }
+    // Admin token for the moderation page (/admin). Created once, readable
+    // only by this user on this machine. Anyone with it can ban players.
+    {
+        const std::string tokenFile = data + "/admin.token";
+        std::ifstream in(tokenFile);
+        std::getline(in, cfg.adminToken);
+        if (cfg.adminToken.size() < 32) {
+            const std::string fresh = ctl::Base64Url(ctl::SystemRandom()(32));
+            const int fd = ::open(tokenFile.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0600);
+            if (fd >= 0) {
+                const std::string line = fresh + "\n";
+                if (::write(fd, line.data(), line.size()) == static_cast<ssize_t>(line.size())) cfg.adminToken = fresh;
+                ::close(fd);
+            }
+        }
+    }
     OnlineServer game(store, cfg);
     const int64_t start = NowMs();
     const size_t recovered = game.RecoverLiveMatches(start);
@@ -102,11 +120,15 @@ int main(int argc, char** argv) {
         {"/lobby.js", {web + "/lobby.js", "text/javascript; charset=utf-8"}},
         {"/lobby.css", {web + "/lobby.css", "text/css; charset=utf-8"}},
         {"/manifest.json", {web + "/manifest.json", "application/manifest+json"}},
+        {"/admin", {web + "/admin.html", "text/html; charset=utf-8"}},
+        {"/admin.js", {web + "/admin.js", "text/javascript; charset=utf-8"}},
         {"/app.js", {controllerWeb + "/app.js", "text/javascript; charset=utf-8"}},
         {"/protocol.js", {controllerWeb + "/protocol.js", "text/javascript; charset=utf-8"}},
         {"/style.css", {controllerWeb + "/style.css", "text/css; charset=utf-8"}},
         {"/icon.svg", {controllerWeb + "/icon.svg", "image/svg+xml"}},
     };
+    for (const char* f : {"IN", "PK", "AU", "ENG", "ZA", "NZ", "LK", "BD", "WI", "AF"})
+        sc.routes["/flags/" + std::string(f) + ".svg"] = {web + "/flags/" + f + ".svg", "image/svg+xml"};
     ctl::LocalServer server(game, sc);
     server.SetTvPage([] { return std::string("<!doctype html><title>Cricket Unleashed server</title><p>See /tv.json"); },
                      [&] { return game.Health(NowMs()).Dump(); });
@@ -120,6 +142,7 @@ int main(int argc, char** argv) {
                   << "  accounts: " << store.AccountCount() << ", live matches recovered: " << recovered << "\n"
                   << "  open http://localhost:" << server.Port() << "/ (use https via a TLS proxy on the internet)\n"
                   << "  health: http://localhost:" << server.Port() << "/tv.json\n"
+                  << "  moderation: /admin with the token in " << data << "/admin.token (keep it secret)\n"
                   << "  stop with Ctrl+C (live matches are journaled and resume on restart)" << std::endl;
     }
     std::signal(SIGINT, OnSignal);

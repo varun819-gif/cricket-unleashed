@@ -72,6 +72,7 @@ Json Store::ToJson(const Account& a) {
     Json j = Json::Object();
     j.Set("id", a.id).Set("name", a.name).Set("country", a.country).Set("tok", a.tokenHash);
     j.Set("created", a.createdMs).Set("rating", a.rating).Set("rated", a.ratedGames);
+    if (a.banUntilMs != 0) j.Set("banUntil", static_cast<double>(a.banUntilMs)).Set("banWhy", a.banReason);
     return j;
 }
 
@@ -84,6 +85,9 @@ std::optional<Account> Store::AccountFrom(const Json& j) {
     a.createdMs = j.Int("created");
     a.rating = static_cast<int>(j.Int("rating", 1200));
     a.ratedGames = static_cast<int>(j.Int("rated"));
+    const double ban = j.Num("banUntil");
+    a.banUntilMs = ban >= 9.2e18 ? kPermanentBan : static_cast<int64_t>(ban);
+    a.banReason = j.Str("banWhy");
     if (a.id.empty() || a.tokenHash.size() != 64) return std::nullopt;
     return a;
 }
@@ -119,6 +123,7 @@ Status Store::Open(const std::string& dir) {
     dir_ = dir;
     accounts_.clear();
     matches_.clear();
+    reports_.clear();
     skipped_ = 0;
     if (dir.empty()) return Status::Ok();
     std::error_code ec;
@@ -142,6 +147,27 @@ Status Store::Open(const std::string& dir) {
         const auto old = accounts_.find(a->id);
         if (old != accounts_.end()) a->stats = old->second.stats;
         accounts_[a->id] = *a;  // the latest line for an account wins
+        return true;
+    });
+    load("reports.jsonl", [&](const Json& j) {
+        Report r;
+        r.id = j.Str("id");
+        r.reporter = j.Str("by");
+        r.target = j.Str("target");
+        r.reason = j.Str("reason");
+        r.matchId = j.Str("match");
+        r.note = j.Str("note");
+        r.createdMs = j.Int("created");
+        r.status = j.Str("status", "open");
+        r.resolution = j.Str("resolution");
+        r.resolvedMs = j.Int("resolved");
+        if (r.id.empty()) return false;
+        for (auto& old : reports_)
+            if (old.id == r.id) {
+                old = r;  // a later line (the admin's decision) replaces it
+                return true;
+            }
+        reports_.push_back(r);
         return true;
     });
     load("matches.jsonl", [&](const Json& j) {
@@ -367,6 +393,7 @@ Json Store::Leaderboard(const std::string& board, const std::string& period, con
     for (auto& [id, row] : rows) {
         const Account& a = accounts_.at(id);
         if (!country.empty() && a.country != country) continue;
+        if (a.BannedAt(now)) continue;  // banned players are hidden
         if (board == "rating") {
             if (a.ratedGames == 0) continue;
             row.value = a.rating;
@@ -395,6 +422,116 @@ Json Store::Leaderboard(const std::string& board, const std::string& period, con
     }
     out.Set("rows", arr);
     return out;
+}
+
+// ---------------------------------------------------------------- moderation
+
+bool Store::PlayedTogether(const std::string& a, const std::string& b) const {
+    for (const auto& m : matches_)
+        if ((m.sides[0].account == a && m.sides[1].account == b) || (m.sides[0].account == b && m.sides[1].account == a))
+            return true;
+    return false;
+}
+
+Json Store::ToJson(const Report& r) {
+    Json j = Json::Object();
+    j.Set("id", r.id).Set("by", r.reporter).Set("target", r.target).Set("reason", r.reason);
+    j.Set("match", r.matchId).Set("note", r.note).Set("created", r.createdMs).Set("status", r.status);
+    j.Set("resolution", r.resolution).Set("resolved", r.resolvedMs);
+    return j;
+}
+
+void Store::LogModeration(const std::string& by, const std::string& action, const std::string& target,
+                          const std::string& detail, int64_t now) {
+    Json j = Json::Object();
+    j.Set("time", now).Set("by", by).Set("action", action).Set("target", target).Set("detail", detail);
+    Append("moderation.jsonl", j);  // audit trail of every admin action
+}
+
+Status Store::AddReport(const std::string& reporter, const std::string& target, const std::string& reason,
+                        const std::string& matchId, const std::string& note, int64_t now, ctl::RandomSource& rnd,
+                        std::string* idOut) {
+    static const char* kReasons[] = {"cheating", "abuse", "name", "quitting", "other"};
+    if (std::find(std::begin(kReasons), std::end(kReasons), reason) == std::end(kReasons))
+        return Status::Err("choose a reason");
+    if (reporter == target || !Find(target)) return Status::Err("no such player");
+    int today = 0;
+    for (const auto& r : reports_) {
+        if (r.reporter != reporter || now - r.createdMs > 24LL * 3600 * 1000) continue;
+        ++today;
+        if (r.target == target) return Status::Err("you already reported this player today");
+    }
+    if (today >= 5) return Status::Err("report limit reached for today");
+    Report r;
+    r.id = "r" + ctl::Base64Url(rnd(9));
+    r.reporter = reporter;
+    r.target = target;
+    r.reason = reason;
+    r.matchId = matchId.size() <= 64 ? matchId : "";
+    r.note = Clean(note, 200);
+    r.createdMs = now;
+    reports_.push_back(r);
+    if (idOut) *idOut = r.id;
+    return Append("reports.jsonl", ToJson(r));
+}
+
+std::vector<Report> Store::Reports(const std::string& status, size_t limit) const {
+    std::vector<Report> out;
+    for (auto it = reports_.rbegin(); it != reports_.rend() && out.size() < limit; ++it)
+        if (status.empty() || it->status == status) out.push_back(*it);
+    return out;
+}
+
+std::vector<Report> Store::ReportsAbout(const std::string& target) const {
+    std::vector<Report> out;
+    for (const auto& r : reports_)
+        if (r.target == target) out.push_back(r);
+    return out;
+}
+
+Status Store::Ban(const std::string& id, int64_t until, const std::string& reason, const std::string& by, int64_t now) {
+    auto it = accounts_.find(id);
+    if (it == accounts_.end()) return Status::Err("no such player");
+    if (until <= now) return Status::Err("ban must end in the future");
+    it->second.banUntilMs = until;
+    it->second.banReason = Clean(reason, 200);
+    LogModeration(by, until == kPermanentBan ? "ban-permanent" : "ban", id,
+                  (until == kPermanentBan ? std::string("permanent") : "until " + std::to_string(until)) + ": " +
+                      it->second.banReason,
+                  now);
+    return Append("accounts.jsonl", ToJson(it->second));
+}
+
+Status Store::Unban(const std::string& id, const std::string& by, int64_t now) {
+    auto it = accounts_.find(id);
+    if (it == accounts_.end()) return Status::Err("no such player");
+    it->second.banUntilMs = 0;
+    it->second.banReason.clear();
+    LogModeration(by, "unban", id, "", now);
+    return Append("accounts.jsonl", ToJson(it->second));
+}
+
+Status Store::ResolveReport(const std::string& reportId, const std::string& status, const std::string& note,
+                            const std::string& by, int64_t now) {
+    if (status != "actioned" && status != "dismissed") return Status::Err("status must be actioned or dismissed");
+    for (auto& r : reports_)
+        if (r.id == reportId) {
+            r.status = status;
+            r.resolution = Clean(note, 200);
+            r.resolvedMs = now;
+            LogModeration(by, "report-" + status, r.target, reportId + ": " + r.resolution, now);
+            return Append("reports.jsonl", ToJson(r));
+        }
+    return Status::Err("no such report");
+}
+
+Status Store::ResetName(const std::string& id, const std::string& by, int64_t now) {
+    auto it = accounts_.find(id);
+    if (it == accounts_.end()) return Status::Err("no such player");
+    const std::string old = it->second.name;
+    it->second.name = "Player " + id.substr(1, 4);
+    LogModeration(by, "rename", id, "was: " + old, now);
+    return Append("accounts.jsonl", ToJson(it->second));
 }
 
 }  // namespace cricket::online

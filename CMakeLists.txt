@@ -48,6 +48,7 @@ target_link_libraries(cricket_controller PUBLIC cricket_core)
 add_library(cricket_online
   online/src/Store.cpp
   online/src/OnlineServer.cpp
+  online/src/Moderation.cpp
 )
 target_include_directories(cricket_online PUBLIC online/include)
 target_link_libraries(cricket_online PUBLIC cricket_controller)

@@ -89,6 +89,7 @@
       lobby: 'Online lobby',
       joining: 'Joining…',
       replaced: 'Signed in on another device',
+      banned: 'Suspended',
     }[s.status] || s.status;
     $('who').textContent = label;
     const needHelp = s.status === 'unpaired' || s.status === 'failed' || s.status === 'revoked';

@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "cricket/TeamFactory.h"
+#include "cricket/online/Moderation.h"
 
 namespace cricket::online {
 
@@ -123,7 +124,7 @@ std::optional<MatchRules> OnlineServer::RulesFor(const std::string& f) {
 
 std::vector<std::string> OnlineServer::TeamNames() {
     std::vector<std::string> out;
-    for (const auto& t : FictionalTeams()) out.push_back(t.name);
+    for (const auto& t : NationalTeams()) out.push_back(t.name);
     return out;
 }
 
@@ -262,6 +263,7 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
             while (!guestTimes_.empty() && now - guestTimes_.front() > 60000) guestTimes_.pop_front();
             if (static_cast<int>(guestTimes_.size()) >= cfg_.maxGuestsPerMinute)
                 return Reply(c, seq, false, "server busy - try again in a minute");
+            if (std::string why = NameProblem(j.Str("name")); !why.empty()) return Reply(c, seq, false, why);
             guestTimes_.push_back(now);
             auto [acc, token] = store_.CreateGuest(j.Str("name"), j.Str("country"), now, rnd_);
             return OnLogin(c, k, acc, seq, now, token);
@@ -273,20 +275,46 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
                 Send(c, Obj().Set("k", "error").Set("why", "login failed"), true);
                 return;
             }
+            if (a->BannedAt(now)) {
+                Reply(c, seq, false, a->banUntilMs == kPermanentBan ? "this player is permanently banned"
+                                                                     : "this player is banned for now",
+                      BanJson(*a));
+                Send(c, Obj().Set("k", "error").Set("why", "banned"), true);
+                return;
+            }
             return OnLogin(c, k, *a, seq, now, "");
+        }
+        if (kind == "admin-login") {
+            while (!adminFailures_.empty() && now - adminFailures_.front() > 600000) adminFailures_.pop_front();
+            // 256-bit token, compared in constant time; 5 wrong tries lock admin out for 10 minutes.
+            if (cfg_.adminToken.size() < 32 || adminFailures_.size() >= 5 ||
+                !ctl::ConstantTimeEqual(j.Str("token"), cfg_.adminToken)) {
+                adminFailures_.push_back(now);
+                Reply(c, seq, false, "admin login failed");
+                Send(c, Obj().Set("k", "error").Set("why", "admin login failed"), true);
+                return;
+            }
+            k.admin = true;
+            k.account = "@admin";
+            return Reply(c, seq, true, "", Obj().Set("admin", true));
         }
         return Fail(c, "log in first");
     }
+    if (k.admin) return OnAdmin(c, j, now);
     const std::string& me = k.account;
     if (kind == "action") return OnAction(c, k, j, now);
+    if (kind == "report") return OnReport(c, k, j, now);
     if (kind == "teams") {
         Json t = Json::Array();
         for (const auto& n : TeamNames()) t.Push(Json::String(n));
         Json f = Json::Array();
         for (const char* x : {"overs=2", "overs=5", "overs=10", "t20", "odi"}) f.Push(Json::String(x));
-        return Reply(c, seq, true, "", Obj().Set("teams", t).Set("formats", f));
+        Json flags = Obj();  // team -> flag picture (/flags/<code>.svg)
+        for (const auto& n : NationalTeamList()) flags.Set(n.name, n.flag);
+        return Reply(c, seq, true, "", Obj().Set("teams", t).Set("formats", f).Set("flags", flags));
     }
     if (kind == "profile") {
+        if (std::string why = NameProblem(j.Str("name")); !why.empty()) return Reply(c, seq, false, why);
         Status s = store_.UpdateProfile(me, j.Str("name"), j.Str("country"));
         return Reply(c, seq, s.ok, s.error, Obj().Set("stats", store_.StatsJson(me)));
     }
@@ -634,7 +662,7 @@ Status OnlineServer::StartMatch(const std::string& mode, const std::string& form
     auto rules = RulesFor(format);
     if (!rules) return Status::Err("unknown format");
     std::array<Team, 2> teams;
-    const auto all = FictionalTeams();
+    const auto all = NationalTeams();
     for (int s = 0; s < 2; ++s) {
         auto it = std::find_if(all.begin(), all.end(), [&](const Team& t) { return t.name == teamNames[s]; });
         if (it == all.end()) return Status::Err("unknown team");
@@ -673,22 +701,23 @@ Status OnlineServer::StartMatch(const std::string& mode, const std::string& form
     return Status::Ok();
 }
 
+void OnlineServer::AbandonSide(OnlineMatch& m, int side, const std::string& why, int64_t now) {
+    if (m.goneSince[0] == -2 || m.aiTakeover[side]) return;
+    const bool otherGone = m.aiTakeover[1 - side] || m.goneSince[1 - side] >= 0;
+    if (otherGone) return FinishMatch(m, -1, "no-result", "Both players left - no result", now);
+    if (m.mode == "ranked")
+        return FinishMatch(m, 1 - side, "forfeit", m.teamNames[side] + " forfeited (" + why + ")", now);
+    m.aiTakeover[side] = true;
+    m.host->HandToAi(side);
+    m.goneSince[side] = -1;
+    WriteMeta(m);
+    Json n = Obj();
+    n.Set("k", "notice").Set("text", "Your opponent left (" + why + "). The computer captain takes over.");
+    m.SendTo(m.players[1 - side], n);
+}
+
 void OnlineServer::RunMatch(OnlineMatch& m, int64_t now) {
-    auto abandon = [&](int side, const std::string& why) {
-        const bool otherGone = m.aiTakeover[1 - side] || m.goneSince[1 - side] >= 0;
-        if (m.mode == "ranked") {
-            if (otherGone) return FinishMatch(m, -1, "no-result", "Both players left - no result", now);
-            return FinishMatch(m, 1 - side, "forfeit", m.teamNames[side] + " forfeited (" + why + ")", now);
-        }
-        if (otherGone) return FinishMatch(m, -1, "no-result", "Both players left - no result", now);
-        m.aiTakeover[side] = true;
-        m.host->HandToAi(side);
-        m.goneSince[side] = -1;
-        WriteMeta(m);
-        Json n = Obj();
-        n.Set("k", "notice").Set("text", "Your opponent left (" + why + "). The computer captain takes over.");
-        m.SendTo(m.players[1 - side], n);
-    };
+    auto abandon = [&](int side, const std::string& why) { AbandonSide(m, side, why, now); };
     for (int s = 0; s < 2; ++s)
         if (!m.aiTakeover[s] && m.goneSince[s] >= 0 && now - m.goneSince[s] >= cfg_.graceMs) {
             abandon(s, "did not reconnect in time");
@@ -847,6 +876,113 @@ void OnlineServer::Tick(int64_t now) {
         if (m->goneSince[0] == -2) done.push_back(id);
     }
     for (const auto& id : done) matches_.erase(id);
+}
+
+// ---------------------------------------------------------------- moderation
+
+Json OnlineServer::BanJson(const Account& a) const {
+    Json j = Obj();
+    j.Set("banned", true).Set("permanent", a.banUntilMs == kPermanentBan).Set("reason", a.banReason);
+    if (a.banUntilMs != kPermanentBan) j.Set("until", static_cast<double>(a.banUntilMs));
+    return j;
+}
+
+void OnlineServer::OnReport(ConnId c, Conn& k, const Json& j, int64_t now) {
+    const int64_t seq = j.Int("s");
+    const std::string target = j.Str("id");
+    // Only someone you have played (now or before) can be reported.
+    const OnlineMatch* live = MatchOf(k.account);
+    const bool inMatchTogether = live && (live->players[0] == target || live->players[1] == target);
+    if (!inMatchTogether && !store_.PlayedTogether(k.account, target))
+        return Reply(c, seq, false, "you can only report players you have played");
+    std::string id;
+    Status s = store_.AddReport(k.account, target, j.Str("reason"), j.Str("match"), j.Str("note"), now, rnd_, &id);
+    Reply(c, seq, s.ok, s.error, Obj().Set("report", id));
+}
+
+void OnlineServer::EnforceBan(const std::string& account, int64_t now) {
+    Dequeue(account);
+    RoomLeave(account, true);
+    if (OnlineMatch* m = MatchById(presence_[account].match)) {
+        const int side = m->players[0] == account ? 0 : 1;
+        if (m->mode == "ranked")
+            FinishMatch(*m, 1 - side, "forfeit", m->teamNames[side] + " was removed by a moderator", now);
+        else
+            AbandonSide(*m, side, "removed by a moderator", now);
+        presence_[account].match.clear();
+    }
+    const Account* a = store_.Find(account);
+    auto p = presence_.find(account);
+    if (a && p != presence_.end() && p->second.conn) {
+        Json b = BanJson(*a);
+        b.Set("k", "banned");
+        Send(p->second.conn, b, true);
+        p->second.conn = 0;
+    }
+}
+
+void OnlineServer::OnAdmin(ConnId c, const Json& j, int64_t now) {
+    const int64_t seq = j.Int("s");
+    const std::string kind = j.Str("k");
+    auto player = [&](const std::string& id) {
+        Json p = Obj();
+        const Account* a = store_.Find(id);
+        if (!a) return p;
+        p.Set("id", a->id).Set("name", a->name).Set("country", a->country).Set("rating", a->rating);
+        p.Set("matches", a->stats.matches).Set("reportsAgainst", static_cast<int64_t>(store_.ReportsAbout(id).size()));
+        if (a->BannedAt(now)) p.Set("ban", BanJson(*a));
+        return p;
+    };
+    auto reportJson = [&](const Report& r) {
+        Json x = Obj();
+        x.Set("id", r.id).Set("reason", r.reason).Set("note", r.note).Set("match", r.matchId);
+        x.Set("created", r.createdMs).Set("status", r.status).Set("resolution", r.resolution);
+        x.Set("reporter", player(r.reporter)).Set("target", player(r.target));
+        return x;
+    };
+    if (kind == "admin-reports") {
+        Json arr = Json::Array();
+        for (const auto& r : store_.Reports(j.Str("status", "open"), 100)) arr.Push(reportJson(r));
+        return Reply(c, seq, true, "", Obj().Set("reports", arr));
+    }
+    if (kind == "admin-player") {
+        const std::string id = j.Str("id");
+        if (!store_.Find(id)) return Reply(c, seq, false, "no such player");
+        Json reps = Json::Array();
+        for (const auto& r : store_.ReportsAbout(id)) reps.Push(reportJson(r));
+        Json hist = Json::Array();
+        for (const auto& m : store_.History(id, 20)) hist.Push(Store::MatchJson(m));
+        return Reply(c, seq, true, "", Obj().Set("player", player(id)).Set("reports", reps).Set("history", hist));
+    }
+    if (kind == "admin-ban") {
+        const std::string id = j.Str("id");
+        const int64_t hours = j.Int("hours", -1);
+        if (hours < 0 || hours > 24 * 365) return Reply(c, seq, false, "hours: 1..8760, or 0 for a permanent ban");
+        const std::string reason = j.Str("reason");
+        if (reason.empty()) return Reply(c, seq, false, "give a reason (the player sees it)");
+        Status s = store_.Ban(id, hours == 0 ? kPermanentBan : now + hours * 3600 * 1000, reason, "admin", now);
+        if (!s.ok) return Reply(c, seq, false, s.error);
+        if (!j.Str("report").empty()) store_.ResolveReport(j.Str("report"), "actioned", reason, "admin", now);
+        EnforceBan(id, now);
+        boardCache_.clear();
+        return Reply(c, seq, true, "", Obj().Set("player", player(id)));
+    }
+    if (kind == "admin-unban") {
+        Status s = store_.Unban(j.Str("id"), "admin", now);
+        boardCache_.clear();
+        return Reply(c, seq, s.ok, s.error);
+    }
+    if (kind == "admin-resolve") {
+        Status s = store_.ResolveReport(j.Str("report"), j.Str("status"), j.Str("note"), "admin", now);
+        return Reply(c, seq, s.ok, s.error);
+    }
+    if (kind == "admin-rename") {
+        Status s = store_.ResetName(j.Str("id"), "admin", now);
+        if (s.ok && !j.Str("report").empty()) store_.ResolveReport(j.Str("report"), "actioned", "name reset", "admin", now);
+        boardCache_.clear();
+        return Reply(c, seq, s.ok, s.error, Obj().Set("player", player(j.Str("id"))));
+    }
+    Reply(c, seq, false, "unknown admin request");
 }
 
 }  // namespace cricket::online

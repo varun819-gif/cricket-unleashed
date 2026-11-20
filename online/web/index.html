@@ -40,7 +40,7 @@
     <div class="card" id="me"></div>
     <div class="card">
       <h2>Your team and match length</h2>
-      <label>Team <select id="team"></select></label>
+      <label>Team <span class="teamrow"><img id="teamFlag" class="flag" alt="" hidden><select id="team"></select></span></label>
       <label>Match <select id="format"></select></label>
     </div>
     <div class="card" id="playCard">
@@ -75,6 +75,15 @@
       <p id="endRating"></p>
       <button id="endOk">Back to lobby</button>
     </div>
+    <div class="card" id="reportCard" hidden>
+      <h2 id="reportTitle">Report a player</h2>
+      <select id="reportReason">
+        <option value="cheating">Cheating</option><option value="abuse">Abuse / bad behaviour</option>
+        <option value="name">Offensive name</option><option value="quitting">Keeps quitting matches</option><option value="other">Other</option>
+      </select>
+      <input id="reportNote" maxlength="200" placeholder="What happened? (optional)">
+      <div class="grid2"><button id="reportSend">Send report</button><button id="reportCancel" class="ghost">Cancel</button></div>
+    </div>
     <div class="card">
       <div class="tabs">
         <button id="tabStats" class="ghost">My stats</button>
@@ -94,6 +103,12 @@
       </div>
       <div id="tabBody"></div>
     </div>
+  </section>
+
+  <section id="bannedCard" class="card" hidden>
+    <h2>Account suspended</h2>
+    <p id="bannedText"></p>
+    <p>If you think this is a mistake, contact the game admin.</p>
   </section>
 
   <section id="score" aria-live="polite" hidden>

@@ -11,6 +11,7 @@
 #pragma once
 
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -43,7 +44,24 @@ struct Account {
     int64_t createdMs = 0;
     int rating = 1200;      // Elo, ranked matches only
     int ratedGames = 0;
+    // Moderation: banned until this time (0 = not banned, kPermanentBan = for good).
+    int64_t banUntilMs = 0;
+    std::string banReason;
     PlayerStats stats;
+    bool BannedAt(int64_t nowMs) const { return banUntilMs != 0 && nowMs < banUntilMs; }
+};
+
+constexpr int64_t kPermanentBan = INT64_MAX;
+
+// A player's report about another player, reviewed by an admin.
+struct Report {
+    std::string id, reporter, target;
+    std::string reason;   // cheating | abuse | name | quitting | other
+    std::string matchId, note;
+    int64_t createdMs = 0;
+    std::string status = "open";  // open | actioned | dismissed
+    std::string resolution;       // admin's note
+    int64_t resolvedMs = 0;
 };
 
 // One side of a finished match, as computed by the SERVER from its own
@@ -101,6 +119,22 @@ public:
     MatchRecord RecordMatch(MatchRecord rec);
 
     std::vector<MatchRecord> History(const std::string& account, size_t limit) const;
+    bool PlayedTogether(const std::string& a, const std::string& b) const;
+
+    // ---- moderation (docs/MODERATION.md) ----
+    // Rules: reason must be known; you can only report someone you played;
+    // at most 5 reports a day per reporter and one per player per day.
+    Status AddReport(const std::string& reporter, const std::string& target, const std::string& reason,
+                     const std::string& matchId, const std::string& note, int64_t nowMs, ctl::RandomSource& rnd,
+                     std::string* idOut = nullptr);
+    std::vector<Report> Reports(const std::string& status, size_t limit) const;  // newest first
+    std::vector<Report> ReportsAbout(const std::string& target) const;
+    // until = kPermanentBan for a permanent ban. Every action is logged with who did it.
+    Status Ban(const std::string& id, int64_t untilMs, const std::string& reason, const std::string& by, int64_t nowMs);
+    Status Unban(const std::string& id, const std::string& by, int64_t nowMs);
+    Status ResolveReport(const std::string& reportId, const std::string& status, const std::string& note,
+                         const std::string& by, int64_t nowMs);
+    Status ResetName(const std::string& id, const std::string& by, int64_t nowMs);
     const MatchRecord* FindMatch(const std::string& id) const;
 
     // board: rating | wins | winpct | runs | wickets | sixes | fours | highscore | matches
@@ -125,8 +159,13 @@ private:
     static std::optional<Account> AccountFrom(const Json& j);
     static std::optional<MatchRecord> MatchFrom(const Json& j);
 
+    void LogModeration(const std::string& by, const std::string& action, const std::string& target,
+                       const std::string& detail, int64_t nowMs);
+    static Json ToJson(const Report& r);
+
     std::string dir_;
     std::map<std::string, Account> accounts_;
+    std::vector<Report> reports_;
     std::vector<MatchRecord> matches_;
     size_t skipped_ = 0;
 };
