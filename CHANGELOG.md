@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.1] - 2026-11-20 - Rules milestone: integration and documentation
+
+### Added
+- End-to-end integration test (25 seeded matches, every format and DRS
+  ruleset, appeals, rain, penalties, save + reload mid-match, identical
+  continuation).
+- A test that a save made right after a refused command keeps its sequence
+  number (replay-attack protection after resume).
+- Documentation refreshed: README, KNOWN_ISSUES (rewritten), TEST_REPORT,
+  DEVELOPMENT_PLAN, ARCHITECTURE, MULTIPLAYER_DESIGN, COMMENTARY_DESIGN.
+
 ## [0.6.0] - 2026-11-20 - Rules milestone, Stage D: save, resume and recovery
 
 ### Added

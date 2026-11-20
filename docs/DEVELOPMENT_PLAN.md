@@ -7,27 +7,31 @@ Status key: ✅ done · 🟡 in progress · ⬜ not started
 | 1 | Hardware check, requirements, architecture | 🟡 | Architecture and gameplay core done and tested. Still needed: a dev PC with Unreal Engine 5 (see below) |
 | 2 | Stadium, players, pitch, ball physics, camera | ⬜ | Needs Unreal and licensed or marketplace assets |
 | 3 | Batting, bowling, scoring | 🟡 | Scoring done in core; batting/bowling input + animation pending |
-| 4 | Fielding, wicketkeeping, cricket rules | 🟡 | Rules, LBW/DRS, field restrictions done; fielding gameplay pending |
+| 4 | Fielding, wicketkeeping, cricket rules | 🟡 | Cricket rules milestone complete (DRS, sessions, rain, save); fielding gameplay needs physics |
 | 5 | Single-player AI | 🟡 | AI captain done; batting/bowling AI needs physics |
 | 6 | Captaincy, toss, field placement | 🟡 | Logic done; cinematics + field editor UI pending |
 | 7 | Mobile QR pairing and controller | ⬜ | |
 | 8 | Multiplayer server, matchmaking, rooms | 🟡 | Authoritative session core done; transport, backend pending |
 | 9 | Commentary, crowd, stadium entertainment | 🟡 | Text commentary EN/HI done; audio pending |
 | 10 | Tournaments, profiles, leaderboard | ⬜ | Design written |
-| 11 | T20, ODI, Test complete | 🟡 | Rules done incl. follow-on/declaration/draw; Test session breaks + save/resume pending |
+| 11 | T20, ODI, Test complete | ✅ (rules) | Formats, Test sessions/days, rain + non-official targets, save/resume done; presentation pending with Unreal |
 | 12 | Career, achievements, progression | ⬜ | |
 | 13 | Cinematics, animation, replays, optimisation | ⬜ | |
 | 14 | Android TV and PC builds | ⬜ | Needs real devices |
 | 15 | Testing, security, release prep | ⬜ | |
 
-## Priority 1: missing cricket rules (approved plan)
+## Cricket rules milestone (Priority 1)
 
 | Step | Feature | Status |
 |---|---|---|
-| 1 | DRS for caught + other reviewable decisions, umpire referrals; corrections: Law 21.12 no-ball runs, configurable rulesets, 15 s timer | 🟡 corrections done, awaiting approval |
-| 2 | Test match lunch / tea / stumps | ⬜ waiting for approval of Step 1 |
-| 3 | Rain interruptions + provisional DLS-style revised targets (non-official) | ⬜ |
-| 4 | Match save and resume | ⬜ |
+| A | DRS complete: hit wicket, obstruction, wide / no-ball reviews, boundary checks, perception-based AI, Hindi reasons, short runs, penalty runs, new ball | ✅ `19bd183` |
+| B | Test sessions: lunch / tea / stumps, days, changeovers, match end | ✅ `64a107c` |
+| C | Rain: non-official CU Rain Rule targets, minimum overs, no-result, Test time lost | ✅ `883f6b9` |
+| D | Save / resume, validation, backups, crash recovery | ✅ `b1cb181` |
+
+Next candidates (no approval assumed): Priority 2 (mobile controller web app
+with QR pairing) and Priority 3 (multiplayer backend architecture for India
+vs Pakistan matches), as agreed.
 
 ## Milestone 1: what is still needed from the team
 

@@ -39,19 +39,19 @@
 
 | Spec module | Where it lives now / later |
 |---|---|
-| CricketRules | `MatchRules`, `Innings`, `Lbw`, `Drs` (done) |
+| CricketRules | `MatchRules`, `Innings`, `Lbw`, `Drs`, `RainRule` (done) |
 | MatchManager | `Match` (done); Unreal `ACricketGameMode` wraps it (planned) |
 | TossManager | `Toss` (done) + toss cinematic in Unreal (planned) |
 | FieldPlacementManager | `FieldPlacement` (done) + overhead field editor UI (planned) |
 | CaptaincyManager | `AutoCaptain` + `MatchSession` commands (done); Auto / Manual / Hybrid modes = who answers `WaitingFor()` (planned UI) |
-| CricketAI | `AutoCaptain` (captaincy done); batting/bowling AI on top of physics (Milestone 5) |
+| CricketAI | `AutoCaptain` + `ReviewAI` (captaincy and reviews done); batting/bowling AI on top of physics (Milestone 5) |
 | MultiplayerManager / NetworkManager | `MatchSession` authority core (done); transport + server (Milestone 8) |
 | CommentaryEngine | `Commentary` text engine (done); `CommentaryAudioManager` (Milestone 9) |
 | BallPhysics, Batting/Bowling/FieldingSystem | Unreal C++ (Milestones 2-4); `QuickSim` is a temporary statistical stand-in |
 | TeamManager / PlayerManager | `Types`, `TeamFactory` (basic); squads, profiles, DB (Milestone 10) |
 | TournamentManager, LeaderboardManager, PlayerProfileManager | backend services (Milestone 10), see LEADERBOARD_DESIGN.md |
 | MobileController | web app + local WebSocket bridge (Milestone 7) |
-| SaveSystem | serialise the command log + seed (replays rebuild state exactly) |
+| SaveSystem | `SaveGame`: journals + replay, checksums, backups, crash logs (done) |
 | CameraDirector, UIManager, StadiumEntertainmentManager, CrowdAudioManager | Unreal (Milestones 9, 13) |
 
 ## Key data flow for one ball

@@ -43,6 +43,15 @@ sends intents to the server.
   repeating anything. This is tested by dropping updates on purpose.
 - **Fields**: an illegal field (for example after the powerplay ends) is
   auto-corrected and logged.
+- **Breaks**: in a human Test match the session pauses at lunch, tea, dinner
+  and stumps until every player sends `ResumePlay`, or the server's break
+  timer calls `ResumeAfterInterval()`.
+- **Weather and umpire actions** (server only): `RainDelay`, `ReduceOvers`,
+  `LoseRestOfDay`, `AbandonMatch`, `AwardPenaltyRuns`.
+- **Crash recovery (implemented)**: every input, accepted or refused, is
+  journaled. A `SessionJournal` file per room lets a restarted server rebuild
+  the room exactly (`RecoverSession`), including the AI's random state, timers
+  and duplicate protection (see SAVE_AND_RESUME.md).
 
 ## Planned around the core
 
@@ -59,8 +68,8 @@ sends intents to the server.
 4. **Reconnection**: a dropped player has 90 s to come back (AI holds a
    "safe" plan meanwhile). After that, it is a forfeit in ranked or AI takeover
    in casual.
-5. **Recovery**: the server saves seed + command log + resolved deliveries.
-   Replaying them rebuilds the exact state after a server crash.
+5. **Recovery**: done in the core (session journal + replay). Still needed:
+   wiring it into the real server process and storage.
 6. **Anti-cheat**: server-only results, input rate limits, signed builds,
    ranked results written only by servers (never by clients), and anomaly
    checks (impossible timings, reaction times).
