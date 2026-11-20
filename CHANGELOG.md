@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.0] - 2026-11-20 - Priority 2: Mobile controller
+
+### Added
+- `controller/` library: SHA-256 / HMAC / SHA-1 / base64, strict JSON, QR
+  encoder, `ControllerHub` (QR pairing with out-of-band secret, mutual
+  proof, device + session keys, signed numbered messages, roles,
+  reconnection, exactly-once actions, limits, revoke, device persistence),
+  `MatchHost` (phone controls → match, bowl/bat stages, per-phone views,
+  timers held while a team's phone is offline), `LocalServer` (static files
+  + WebSocket, POSIX).
+- Phone app `controller/web/` (Android browsers): toss, captaincy, review
+  countdown, bowling (delivery, pitch target, effort), batting (incoming
+  ball, direction pad, timing tap), fielding, spectator view, automatic
+  reconnection, instructions.
+- `cricket_controller_host`: TV/PC program with terminal QR, TV page,
+  fresh codes per slot, `--devices` persistence.
+- Tests: 36 C++ (217 total), 6 Node (in ctest), Android-emulated browser
+  test. Docs: MOBILE_CONTROLLER.md, CONNECT_YOUR_PHONE.md,
+  MISSING_DETAILS.md, screenshots.
+
 ## [0.7.0] - 2026-11-20 - Run-out and stumping reviews
 
 ### Added

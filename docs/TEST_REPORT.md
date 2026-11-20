@@ -16,6 +16,25 @@ are unchanged and pass.
 
 Run: `cmake -S . -B build && cmake --build build && ./build/cricket_tests`
 
+## Mobile controller (Priority 2) results
+
+| Suite | Tests | What they prove |
+|---|---|---|
+| Controller utilities (C++) | 8 | SHA-256 (FIPS vectors incl. 1 million 'a'), SHA-1 + RFC 6455 handshake value, HMAC (RFC 4231), base64 (RFC 4648), strict JSON accept/reject, QR matrices identical to two reference encoders (all masks, versions 1-10) |
+| Controller hub (C++) | 14 | pairing + TV proof, wrong secret burns the code, expiry, bad nonce, signed actions + replies, tampering / replay / wrong-direction / pre-auth messages rejected, reconnect with new session key, old-session replay rejected, exactly-once actions across reconnects, newer connection replaces older, grace period + lost + back, revoke, limits, handshake timeout, devices survive a TV restart |
+| Match host (C++) | 7 | full T20 phone vs AI, full two-phone match, role-based controls, bowl + bat timeouts, timers held while a team's phone is offline, bad inputs rejected + field change applied, placeholder outcome rules |
+| Local server (C++, real sockets) | 7 | only listed files served (path tricks refused), security headers, 405 / 431, TV page only to the TV itself (tested via the machine's network address), WebSocket handshake (RFC accept value, origin, missing key), frame rules (unmasked, binary, oversize, ping), full pairing over the wire with fragmented frames, disconnect noticed |
+| Phone JavaScript (Node, in `ctest`) | 6 | hash vectors match C++, link parsing, **two phones play a full India vs Pakistan match through the real host**, automatic reconnection, used / forged QR codes refused |
+| Browser (Chromium emulating Pixel 7) | 14 checks | Android user agent, pairing secret removed from the address bar, header, scoreboard, bowling by tapping the pitch + BOWL, batting with a shot tap, reconnect message + automatic reconnection, reload resumes the same phone, **no JavaScript errors**, instructions for unpaired phones, TV page QR codes **decode to their links** |
+
+Builds: Debug + sanitizers, Release GCC, Release Clang: **0 warnings, 217/217
+C++ tests, 6/6 JS tests**, browser test all passed.
+
+Bugs found by these tests and fixed before release: the opener "Send" button
+stayed disabled; pitch labels blocked by the page's own security policy;
+vibration attempted before the first tap; header showed "Team 1" instead of
+the team name; three uninitialised-variable warnings in GCC release builds.
+
 ## Suites
 
 | Suite | Tests | What they prove |

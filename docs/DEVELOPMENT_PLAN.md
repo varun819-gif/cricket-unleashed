@@ -10,7 +10,7 @@ Status key: ✅ done · 🟡 in progress · ⬜ not started
 | 4 | Fielding, wicketkeeping, cricket rules | 🟡 | Cricket rules milestone complete (DRS, sessions, rain, save); fielding gameplay needs physics |
 | 5 | Single-player AI | 🟡 | AI captain done; batting/bowling AI needs physics |
 | 6 | Captaincy, toss, field placement | 🟡 | Logic done; cinematics + field editor UI pending |
-| 7 | Mobile QR pairing and controller | ⬜ | |
+| 7 | Mobile QR pairing and controller | ✅ (logic, phone app, local server) | Unreal on-screen QR + Windows socket port come with the 3D client |
 | 8 | Multiplayer server, matchmaking, rooms | 🟡 | Authoritative session core done; transport, backend pending |
 | 9 | Commentary, crowd, stadium entertainment | 🟡 | Text commentary EN/HI done; audio pending |
 | 10 | Tournaments, profiles, leaderboard | ⬜ | Design written |
@@ -29,9 +29,16 @@ Status key: ✅ done · 🟡 in progress · ⬜ not started
 | C | Rain: non-official CU Rain Rule targets, minimum overs, no-result, Test time lost | ✅ `883f6b9` |
 | D | Save / resume, validation, backups, crash recovery | ✅ `b1cb181` |
 
-Next candidates (no approval assumed): Priority 2 (mobile controller web app
-with QR pairing) and Priority 3 (multiplayer backend architecture for India
-vs Pakistan matches), as agreed.
+## Priority 2: mobile controller ✅
+
+QR pairing, secure local link, captain / player / spectator controls,
+reconnection, Android browser app, TV page and host program. See
+MOBILE_CONTROLLER.md.
+
+## Priority 3: online multiplayer backend (next)
+
+Approved to start after Priority 2. Self-hosted / local first: no paid
+services without approval. Open questions are in MISSING_DETAILS.md.
 
 ## Milestone 1: what is still needed from the team
 

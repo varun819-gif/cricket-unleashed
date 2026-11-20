@@ -50,7 +50,7 @@
 | BallPhysics, Batting/Bowling/FieldingSystem | Unreal C++ (Milestones 2-4); `QuickSim` is a temporary statistical stand-in |
 | TeamManager / PlayerManager | `Types`, `TeamFactory` (basic); squads, profiles, DB (Milestone 10) |
 | TournamentManager, LeaderboardManager, PlayerProfileManager | backend services (Milestone 10), see LEADERBOARD_DESIGN.md |
-| MobileController | web app + local WebSocket bridge (Milestone 7) |
+| MobileController | `controller/`: ControllerHub (pairing + signed messages), MatchHost, LocalServer, QrCode, phone app in `controller/web` (done) |
 | SaveSystem | `SaveGame`: journals + replay, checksums, backups, crash logs (done) |
 | CameraDirector, UIManager, StadiumEntertainmentManager, CrowdAudioManager | Unreal (Milestones 9, 13) |
 

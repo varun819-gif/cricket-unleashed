@@ -54,6 +54,21 @@ this milestone have been removed (see CHANGELOG.md).
     come only from the server's own journal, so this doesn't affect fair
     play (see SAVE_AND_RESUME.md).
 
+## Mobile controller
+
+18. **Phone ball outcomes are simulated** (QuickSim nudged by shot, timing
+    and delivery) until Unreal ball physics exists.
+19. **Messages are signed, not encrypted.** Someone on the same Wi-Fi could
+    see which buttons are pressed (not fake them). See MOBILE_CONTROLLER.md.
+20. **The local server is POSIX-only** (Linux / Android TV). Windows needs a
+    Winsock port of `LocalServer.cpp`.
+21. **Tested with Chromium emulating an Android Pixel 7**, not yet on
+    physical Android phones or Android TV hardware. iPhones untested.
+22. Shot timing is measured on the phone (fine for local play). Online
+    ranked play must check timing on the server (Priority 3).
+23. The phone app is English-only for now. Screen Wake Lock isn't available
+    on plain `http://` local pages, so phones may dim during long waits.
+
 ## Operational notes
 
 16. The DRS review timer and break timers need the server to call

@@ -4,7 +4,7 @@ A premium, photorealistic 3D cricket game for **Android TV, Windows PC** and a
 **phone-as-controller** web app. It will have single player, online head-to-head,
 private rooms, ranked matchmaking, tournaments and global leaderboards.
 
-> **Status: Milestone 1 core done; cricket rules milestone complete (DRS, Test sessions, rain, save/resume).** This repository has the
+> **Status: cricket rules milestone complete; Priority 2 (mobile controller) complete; next: Priority 3 (online multiplayer backend).** This repository has the
 > **engine-independent gameplay core**: rules, scoring, toss, field
 > restrictions, AI captain, commentary and the server-side match session. It is
 > tested, and it runs full T20, ODI and Test matches in text mode. The Unreal
@@ -28,7 +28,9 @@ Needs CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022).
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./build/cricket_tests                      # 176 tests
+./build/cricket_tests                      # 217 C++ tests
+(cd build && ctest)                        # C++ + phone-side JavaScript tests
+./build/cricket_controller_host            # play with your phone: scan the QR it prints
 ./build/cricket_sim t20 0 1                # AI vs AI T20 with commentary
 ./build/cricket_sim odi 2 3 --quiet        # scorecard only
 ./build/cricket_sim test 4 5 --hindi       # Test match, Hindi commentary
@@ -55,6 +57,7 @@ cmake --build build -j
 | Commentary | lead + expert lines in English and Hindi, built only from verified ball events, never the same line twice in a row |
 | Multiplayer core | server-authoritative session: join sides, rejects duplicate and out-of-turn commands, review timer, break pauses, weather and penalty actions, ordered event log so a reconnecting client can catch up, crash recovery from the session journal |
 | Teams | 10 fictional international sides (no licensed names or likenesses) |
+| **Phone controller** | QR pairing over home Wi-Fi, secret never sent over the network, signed + numbered messages, captain / player / spectator controls (toss, captaincy, review, bowling, batting, fielding), automatic reconnection with the game waiting for you, TV page with QR codes. Ball outcomes are **simulated placeholders** until Unreal physics. See [docs/MOBILE_CONTROLLER.md](docs/MOBILE_CONTROLLER.md) and [docs/CONNECT_YOUR_PHONE.md](docs/CONNECT_YOUR_PHONE.md) |
 
 ## Repository layout
 
@@ -65,6 +68,9 @@ core/include/cricket/   public headers (Types, MatchRules, Innings, Match, Toss,
                         TeamFactory)
 core/src/               implementation
 core/tests/             unit + full-match simulation tests
+controller/             phone controller: C++ hub, match host, local server, QR, crypto
+controller/web/         the phone page (HTML/CSS/JS) and its tests
+tools/controller_host/  TV/PC program for phone play (stands in for the game)
 tools/sim/              text-mode match simulator
 docs/                   design documents
 ```
@@ -78,6 +84,8 @@ docs/                   design documents
 - [Test match sessions](docs/TEST_SESSIONS.md)
 - [Rain rule (non-official)](docs/RAIN_RULE.md)
 - [Save and resume](docs/SAVE_AND_RESUME.md)
+- [Mobile controller](docs/MOBILE_CONTROLLER.md) · [Connect your phone](docs/CONNECT_YOUR_PHONE.md)
+- [Missing details and assumptions](docs/MISSING_DETAILS.md)
 - [Commentary design](docs/COMMENTARY_DESIGN.md)
 - [Leaderboard design](docs/LEADERBOARD_DESIGN.md)
 - [Asset register (licensing)](docs/ASSET_REGISTER.md)
