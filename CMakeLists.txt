@@ -39,6 +39,7 @@ add_library(cricket_controller
   controller/src/QrCode.cpp
   controller/src/ControllerHub.cpp
   controller/src/MatchHost.cpp
+  controller/src/LocalServer.cpp
 )
 target_include_directories(cricket_controller PUBLIC controller/include)
 target_link_libraries(cricket_controller PUBLIC cricket_core)
@@ -65,6 +66,7 @@ add_executable(cricket_tests
   controller/tests/ControllerUtilTests.cpp
   controller/tests/ControllerHubTests.cpp
   controller/tests/MatchHostTests.cpp
+  controller/tests/LocalServerTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core cricket_controller)
 # Lets tests read source files (information-hiding scan of the AI code).
