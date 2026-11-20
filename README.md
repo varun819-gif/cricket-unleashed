@@ -90,7 +90,7 @@ docs/                   design documents
 - [Mobile controller](docs/MOBILE_CONTROLLER.md) · [Connect your phone](docs/CONNECT_YOUR_PHONE.md)
 - [Online multiplayer](docs/ONLINE_MULTIPLAYER.md) · [Run the server for ₹0 + internet test](docs/ONLINE_SERVER_SETUP.md)
 - [Moderation](docs/MODERATION.md) · [Account linking (future)](docs/ACCOUNT_LINKING.md) · [Priority 3 closure report](docs/P3_CLOSURE_REPORT.md)
-- [Unreal Engine development plan](docs/UNREAL_DEVELOPMENT_PLAN.md)
+- [3D development plan (hardware, costs, first prototype)](docs/3D_DEVELOPMENT_PLAN.md) · [earlier Unreal outline](docs/UNREAL_DEVELOPMENT_PLAN.md)
 - [Run on a Windows laptop](docs/RUN_ON_WINDOWS.md) · [Single player vs computer](docs/SINGLE_PLAYER.md)
 - [Missing details and assumptions](docs/MISSING_DETAILS.md)
 - [Commentary design](docs/COMMENTARY_DESIGN.md)

@@ -1,5 +1,7 @@
 # Unreal Engine Development Plan
 
+> **Superseded by [3D_DEVELOPMENT_PLAN.md](3D_DEVELOPMENT_PLAN.md)** (hardware assessment, costs, first 3D prototype).
+
 Status: **plan only. No Unreal (3D) work has started.** Nothing has been
 bought and no paid service is used.
 
