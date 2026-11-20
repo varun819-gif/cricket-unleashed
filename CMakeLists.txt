@@ -77,3 +77,12 @@ target_link_libraries(cricket_tests PRIVATE cricket_core cricket_controller)
 # Lets tests read source files (information-hiding scan of the AI code).
 target_compile_definitions(cricket_tests PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME cricket_tests COMMAND cricket_tests)
+
+# Phone-side tests (JavaScript protocol + end-to-end against the real host).
+find_program(NODE_EXE node)
+if(NODE_EXE)
+  add_test(NAME controller_js
+           COMMAND ${NODE_EXE} --test ${CMAKE_SOURCE_DIR}/controller/web/tests/protocol.test.mjs)
+  set_tests_properties(controller_js PROPERTIES
+           ENVIRONMENT "CU_HOST_BIN=$<TARGET_FILE:cricket_controller_host>" TIMEOUT 300)
+endif()

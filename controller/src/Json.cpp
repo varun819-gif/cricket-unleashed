@@ -219,10 +219,10 @@ struct Parser {
                 case 'r': o += '\r'; break;
                 case 't': o += '\t'; break;
                 case 'u': {
-                    uint32_t cp;
+                    uint32_t cp = 0;
                     if (!Hex4(&cp)) return false;
                     if (cp >= 0xD800 && cp <= 0xDBFF) {
-                        uint32_t lo;
+                        uint32_t lo = 0;
                         if (s.compare(i, 2, "\\u") != 0) return Fail("lone surrogate");
                         i += 2;
                         if (!Hex4(&lo) || lo < 0xDC00 || lo > 0xDFFF) return Fail("bad surrogate");
@@ -342,7 +342,7 @@ struct Parser {
             out = Json::Null();
             return true;
         }
-        double n;
+        double n = 0;
         if (!Num(n)) return false;
         out = Json::Number(n);
         return true;

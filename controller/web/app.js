@@ -17,7 +17,9 @@
     kids.flat().forEach((c) => c != null && n.append(c.nodeType ? c : document.createTextNode(String(c))));
     return n;
   };
-  const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* ignore */ } };
+  let touched = false;  // browsers only allow vibration after the first tap
+  window.addEventListener('pointerdown', () => { touched = true; }, { once: true, capture: true });
+  const buzz = (ms) => { if (!touched) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* ignore */ } };
   let toastTimer = null;
   function toast(msg) {
     const t = $('toast');
@@ -52,7 +54,13 @@
 
   function onEvent(type, data) {
     if (type === 'status') return showStatus(data);
-    if (type === 'state') { state = data; render(); return; }
+    if (type === 'state') {
+      const first = !state;
+      state = data;
+      if (first) showStatus({ status: client.status });  // header can now show the team name
+      render();
+      return;
+    }
     if (type === 'ball') {
       ball = { arriveAt: performance.now() + data.arriveInMs, variation: data.variation, flight: data.arriveInMs };
       buzz(40);
@@ -218,8 +226,8 @@
       onclick: () => { bowlChoice.variation = v; lastSignature = ''; render(); } })));
     const marker = el('div', { class: 'marker' });
     const pitch = el('div', { class: 'pitch', 'aria-label': 'Tap where the ball should pitch' },
-      el('span', { class: 'zone', style: 'top:6px', text: 'SHORT' }), el('span', { class: 'zone', style: 'top:45%', text: 'GOOD' }),
-      el('span', { class: 'zone', style: 'bottom:18px', text: 'FULL' }), el('div', { class: 'stumps' }), marker);
+      el('span', { class: 'zone zone-short', text: 'SHORT' }), el('span', { class: 'zone zone-good', text: 'GOOD' }),
+      el('span', { class: 'zone zone-full', text: 'FULL' }), el('div', { class: 'stumps' }), marker);
     const place = () => {
       marker.style.left = (50 + bowlChoice.line * 40) + '%';
       marker.style.top = (8 + (1 - bowlChoice.length) * 84) + '%';
@@ -244,7 +252,7 @@
     const incoming = el('div', { class: 'incoming' }, bar);
     const arrow = el('div', { class: 'arrow' });
     const pad = el('div', { class: 'dirpad', 'aria-label': 'Drag to aim the shot' }, arrow,
-      el('span', { class: 'lbl', style: 'left:8px', text: 'LEG' }), el('span', { class: 'lbl', style: 'right:8px', text: 'OFF' }));
+      el('span', { class: 'lbl lbl-leg', text: 'LEG' }), el('span', { class: 'lbl lbl-off', text: 'OFF' }));
     const aim = (e) => {
       const r = pad.getBoundingClientRect();
       const dx = e.clientX - (r.left + r.width / 2), dy = (r.bottom) - e.clientY;
