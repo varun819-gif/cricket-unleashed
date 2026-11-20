@@ -64,6 +64,8 @@ const std::map<std::string, std::pair<std::string, std::string>>& LocalServer::R
         {"/style.css", {"style.css", "text/css; charset=utf-8"}},
         {"/manifest.json", {"manifest.json", "application/manifest+json"}},
         {"/icon.svg", {"icon.svg", "image/svg+xml"}},
+        {"/tv.js", {"tv.js", "text/javascript; charset=utf-8"}},
+        {"/tv.css", {"tv.css", "text/css; charset=utf-8"}},
     };
     return r;
 }

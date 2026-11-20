@@ -1,0 +1,109 @@
+:root {
+  --bg: #07130f;
+  --panel: #0f2a20;
+  --line: #1f4a3a;
+  --text: #f1f7f3;
+  --muted: #9fbfb0;
+  --accent: #f4c430;
+  --accent-text: #1a1300;
+  --good: #3ad07a;
+  --warn: #ff9f43;
+  --bad: #ff5d5d;
+  --pitch: #c8a96b;
+  --grass: #1d6b3f;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
+  min-height: 100vh;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+[hidden] { display: none !important; }
+#bar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; background: var(--bg);
+}
+#who { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); flex: none; }
+.dot.ok { background: var(--good); }
+.dot.wait { background: var(--warn); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+
+#score {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px 14px; margin-bottom: 12px;
+}
+#teams { color: var(--muted); font-size: 14px; }
+#total { font-size: 34px; font-weight: 800; letter-spacing: .5px; }
+#chase, #batters, #bowler { font-size: 15px; color: var(--muted); }
+#batters b, #bowler b { color: var(--text); }
+#message { margin-top: 6px; font-size: 14px; min-height: 1.3em; }
+.free-hit { color: var(--accent); font-weight: 700; }
+
+main { display: flex; flex-direction: column; gap: 12px; }
+h2 { font-size: 18px; margin: 4px 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+button {
+  font: inherit; font-weight: 700; color: var(--accent-text); background: var(--accent);
+  border: 0; border-radius: 12px; min-height: 56px; padding: 12px 14px; cursor: pointer;
+}
+button:active { transform: scale(.97); }
+button.secondary { background: #2a5a47; color: var(--text); }
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); min-height: 40px; }
+button.chip { min-height: 44px; background: #2a5a47; color: var(--text); font-weight: 600; }
+button.chip.on { background: var(--accent); color: var(--accent-text); }
+button.big { min-height: 72px; font-size: 22px; width: 100%; }
+button:disabled { opacity: .45; }
+.list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.list button { text-align: left; background: #2a5a47; color: var(--text); }
+.list button small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.list button.on { background: var(--accent); color: var(--accent-text); }
+.countdown { font-size: 28px; font-weight: 800; text-align: center; color: var(--accent); }
+.wait { color: var(--muted); text-align: center; padding: 18px 0; }
+
+/* Bowling: tap the pitch to aim */
+.pitch {
+  position: relative; height: 230px; border-radius: 12px;
+  background: linear-gradient(90deg, var(--grass) 0 18%, var(--pitch) 18% 82%, var(--grass) 82%);
+  touch-action: none;
+}
+.pitch .stumps { position: absolute; left: 50%; bottom: 6px; width: 30px; height: 6px; margin-left: -15px; background: #fff; border-radius: 2px; }
+.pitch .marker { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 3px solid #fff; background: rgba(255,80,80,.7); }
+.pitch .zone { position: absolute; left: 4px; font-size: 11px; color: #2b2210; font-weight: 700; }
+input[type=range] { width: 100%; height: 40px; accent-color: var(--accent); }
+select { font: inherit; min-height: 48px; width: 100%; border-radius: 10px; background: #2a5a47; color: var(--text); border: 1px solid var(--line); padding: 0 10px; }
+
+/* Batting */
+.incoming { height: 16px; border-radius: 8px; background: #2a5a47; overflow: hidden; }
+.incoming > div { height: 100%; width: 0; background: var(--accent); }
+.dirpad {
+  position: relative; height: 150px; border-radius: 150px 150px 0 0;
+  background: radial-gradient(circle at 50% 100%, var(--pitch) 0 14%, var(--grass) 15%);
+  touch-action: none; overflow: hidden;
+}
+.dirpad .arrow { position: absolute; left: 50%; bottom: 0; width: 4px; height: 130px; margin-left: -2px; background: #fff; transform-origin: 50% 100%; border-radius: 2px; }
+.dirpad .lbl { position: absolute; bottom: 4px; font-size: 12px; color: #fff; font-weight: 700; }
+
+.note { color: var(--muted); font-size: 12px; text-align: center; margin: 18px 0 6px; }
+.error { color: var(--bad); }
+#help { background: var(--panel); border-radius: 14px; padding: 16px; margin-top: 12px; }
+#help h1 { font-size: 22px; margin-top: 0; }
+#help li { margin: 8px 0; }
+#toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom));
+  background: #000c; color: #fff; padding: 12px 14px; border-radius: 12px; text-align: center;
+  opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+@media (min-width: 700px) and (orientation: landscape) {
+  main { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+}

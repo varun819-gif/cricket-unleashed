@@ -44,6 +44,11 @@ add_library(cricket_controller
 target_include_directories(cricket_controller PUBLIC controller/include)
 target_link_libraries(cricket_controller PUBLIC cricket_core)
 
+# TV/PC side of the phone controller (stands in for the game until Unreal).
+add_executable(cricket_controller_host tools/controller_host/main.cpp)
+target_link_libraries(cricket_controller_host PRIVATE cricket_controller)
+target_compile_definitions(cricket_controller_host PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
 # Text-mode match simulator / demo.
 add_executable(cricket_sim tools/sim/main.cpp)
 target_link_libraries(cricket_sim PRIVATE cricket_core)

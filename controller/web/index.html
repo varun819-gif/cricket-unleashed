@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d2e">
+  <title>Cricket Unleashed Controller</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="bar">
+    <span id="conn" class="dot" aria-hidden="true"></span>
+    <span id="who">Not connected</span>
+    <button id="fullscreen" class="ghost" aria-label="Full screen">⛶</button>
+  </header>
+
+  <section id="score" aria-live="polite" hidden>
+    <div id="teams"></div>
+    <div id="total"></div>
+    <div id="chase"></div>
+    <div id="batters"></div>
+    <div id="bowler"></div>
+    <div id="message"></div>
+  </section>
+
+  <main id="panel"></main>
+
+  <section id="help" hidden>
+    <h1>Connect to the game</h1>
+    <ol>
+      <li>Put this phone on the <b>same Wi-Fi</b> as the TV or PC running Cricket Unleashed.</li>
+      <li>On the TV, open <b>Controllers</b>. A QR code appears.</li>
+      <li>Open the phone camera (or Google Lens) and point it at the QR code.</li>
+      <li>Tap the link that appears. This page opens and connects by itself.</li>
+    </ol>
+    <p>Each QR code works <b>once</b> and for <b>2 minutes</b>. If it expires, the TV shows a new one.</p>
+    <p id="helpError" class="error"></p>
+    <button id="forget" class="ghost" hidden>Forget this TV and pair again</button>
+  </section>
+
+  <p id="note" class="note">Ball outcomes are simulated until the 3D game's ball physics is ready.</p>
+  <div id="toast" role="status"></div>
+
+  <script src="protocol.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

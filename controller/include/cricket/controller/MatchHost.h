@@ -67,6 +67,8 @@ public:
     // Human side with no connected phone (-1 if none): the game waits for it.
     int WaitingForController() const;
     const std::string& Stage() const { return stage_; }
+    // Hub events (paired, connected, lost...) seen during the last Process.
+    const std::vector<HubEvent>& RecentHubEvents() const { return recentEvents_; }
 
     // PLACEHOLDER resolver (exposed for tests).
     static Delivery ResolveWithInputs(const Match& m, QuickSim& sim, const BowlInput& bowl, const BatInput& bat,
@@ -98,6 +100,7 @@ private:
     std::vector<std::string> fieldingCalls_;
     std::map<std::string, std::string> lastSent_;  // device -> last state JSON
     std::map<std::string, int64_t> lastSentAt_;
+    std::vector<HubEvent> recentEvents_;
     std::string message_;                          // last notable event text
     uint64_t lastEvent_ = 0;
 };

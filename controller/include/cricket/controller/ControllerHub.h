@@ -100,6 +100,8 @@ public:
     PairingOffer CreatePairing(int side, Role role, int64_t nowMs);
     void CancelPairing(const std::string& pairId);
     size_t PendingPairings() const { return pairings_.size(); }
+    // Still unused and not expired (as of the last Tick).
+    bool IsPending(const std::string& pairId) const { return pairings_.count(pairId) > 0; }
     // Sends a message body to one phone / to every connected phone of a side
     // (side -2 = everyone). Bodies are JSON objects.
     bool SendTo(const std::string& device, const Json& body);

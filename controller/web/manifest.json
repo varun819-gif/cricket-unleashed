@@ -1,0 +1,10 @@
+{
+  "name": "Cricket Unleashed Controller",
+  "short_name": "CU Controller",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07130f",
+  "theme_color": "#0b3d2e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

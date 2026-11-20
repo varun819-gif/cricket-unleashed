@@ -270,7 +270,8 @@ void MatchHost::AdvanceDelivery(int64_t now) {
 }
 
 void MatchHost::Process(int64_t now) {
-    for (const auto& e : hub_.TakeEvents())
+    recentEvents_ = hub_.TakeEvents();
+    for (const auto& e : recentEvents_)
         if (e.kind == HubEvent::Kind::Connected) lastSent_.erase(e.device);  // send a full state again
     for (const auto& a : hub_.TakeActions()) {
         Status s = Apply(a, now);
