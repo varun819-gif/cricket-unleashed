@@ -4,7 +4,7 @@ A premium, photorealistic 3D cricket game for **Android TV, Windows PC** and a
 **phone-as-controller** web app. It will have single player, online head-to-head,
 private rooms, ranked matchmaking, tournaments and global leaderboards.
 
-> **Status: Milestone 1 core done; Priority 1 (missing rules) in progress - Step 1 DRS done.** This repository has the
+> **Status: Milestone 1 core done; Priority 1 (missing rules) in progress - Step 1 DRS corrections done, awaiting review.** This repository has the
 > **engine-independent gameplay core**: rules, scoring, toss, field
 > restrictions, AI captain, commentary and the server-side match session. It is
 > tested, and it runs full T20, ODI and Test matches in text mode. The Unreal
@@ -28,12 +28,13 @@ Needs CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022).
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./build/cricket_tests                      # 65 tests
+./build/cricket_tests                      # 98 tests
 ./build/cricket_sim t20 0 1                # AI vs AI T20 with commentary
 ./build/cricket_sim odi 2 3 --quiet        # scorecard only
 ./build/cricket_sim test 4 5 --hindi       # Test match, Hindi commentary
 ./build/cricket_sim overs=5 --seed 42      # 5-over game, repeatable
 ./build/cricket_sim --teams                # list the fictional teams
+./build/cricket_sim t20 --drs no-reviews   # DRS ruleset: icc | no-reviews | no-tech | custom:R:S[:lose]
 ```
 
 ## What works today
@@ -41,12 +42,12 @@ cmake --build build -j
 | Area | Done |
 |---|---|
 | Formats | T20, ODI, Test (5/4/3-day), custom overs |
-| Scoring | runs, boundaries, wides, no-balls, byes, leg-byes, maidens, milestones |
+| Scoring | runs, boundaries, wides, no-balls (bat runs, byes and leg-byes per Law 21.12), byes, leg-byes, maidens, milestones |
 | Laws | free hit, which dismissals are allowed on each kind of ball, strike rotation, new batter's end, no bowler bowls two overs in a row, bowler over limits, all out, target, declarations, follow-on, innings wins, ties, draws when time runs out |
-| LBW / DRS | Law 36 LBW plus full DRS: player reviews for caught and LBW (edge, clean catch, ball tracking, caught→LBW check), third-umpire referrals for run outs, stumpings and clean catches, automatic front-foot no-ball check, 2 unsuccessful reviews per innings, dead-ball run correction, play held until decided. See [docs/DRS_DESIGN.md](docs/DRS_DESIGN.md) |
+| LBW / DRS | Law 36 LBW plus DRS rules: player reviews for caught and LBW (edge, clean catch, ball tracking, caught→LBW check), third-umpire referrals for run outs, stumpings and clean catches, automatic front-foot no-ball check, **configurable rulesets** (reviews per innings, umpire's call, third umpire on/off), **server-side 15-second review timer**, correct runs when a decision changes, play held until decided. ⚠️ Ball tracking and edge detection are **simulated placeholders**, not real DRS technology. See [docs/DRS_DESIGN.md](docs/DRS_DESIGN.md) |
 | Fielding | 26 named positions, 10 presets, manual placement, 30-yard circle, powerplay limits, max 2 behind square on the leg side, no one on the pitch or past the boundary |
 | Toss | only the calling captain calls, only the winner decides, server-seeded coin |
-| AI | bowling changes (fatigue, death overs, powerplay), batting order, fields, follow-on, declarations, toss |
+| AI | bowling changes (fatigue, death overs, powerplay), batting order, fields, follow-on, declarations, toss, DRS reviews (stop-gap that peeks at the evidence, see DRS_DESIGN.md) |
 | Commentary | lead + expert lines in English and Hindi, built only from verified ball events, never the same line twice in a row |
 | Multiplayer core | server-authoritative session: join sides, rejects duplicate and out-of-turn commands, ordered event log so a reconnecting client can catch up |
 | Teams | 10 fictional international sides (no licensed names or likenesses) |

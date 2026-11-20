@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.2.1] - 2026-11-20 - Step 1 DRS: review corrections
+
+### Fixed
+- **No-ball runs** now follow Law 21.12 (MCC Laws 2017). New
+  `Delivery::noBallRunsAs` (None = off the bat, Bye, LegBye). Byes and
+  leg-byes off a no-ball are recorded as byes / leg-byes and not charged to
+  the bowler. Bat runs go to the striker.
+- **DRS no longer throws runs away** when it finds a no-ball. Bat runs, byes
+  and leg-byes keep their origin. A ball called wide becomes a no-ball with
+  its runs as byes. (Runs after an OUT that is overturned are still dropped:
+  the ball was dead at the original decision.)
+- Without a third umpire, run outs / stumpings were refused and the ball
+  was lost. Now the on-field umpire decides.
+
+### Added
+- `DrsRules` (configurable per competition): player reviews on/off, third
+  umpire on/off, reviews per innings, umpire's call keeps or loses the
+  review, review timer length. Presets `Icc`, `NoPlayerReviews`,
+  `NoTechnology`, `Custom`, plus a name parser. Simulator option `--drs`.
+- Server-side **15-second review timer**: `MatchSession::Tick`, `SubmitAt`,
+  `ReviewMsLeft`, `Pending::deadlineMs`, and the `review-timeout` event. On
+  expiry the on-field decision stands, no review is used, and the no-ball
+  check still applies.
+- Documentation: DRS evidence clearly marked as a simulated placeholder. AI
+  review limitations and replacement plan (DRS_DESIGN.md, KNOWN_ISSUES.md,
+  code comments).
+- 33 new tests (98 total): 17 no-ball scoring, 16 rulesets + timer.
+
+### Changed
+- `MatchRules::reviewsPerInnings` replaced by `MatchRules::drs.reviewsPerInnings`.
+- `ExpireReviewWindow()` kept for manual use. `Tick()` is now the normal path.
+
 ## [0.2.0] - 2026-11-20 - Priority 1, Step 1: DRS
 
 ### Added

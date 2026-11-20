@@ -31,8 +31,12 @@ public:
     FieldSetup ChooseLegalField(const Match& m, BowlingKind kind) const;
     bool ShouldEnforceFollowOn(const Match& m);
     bool ShouldDeclare(const Match& m) const;
-    // Should `side` review the pending on-field decision? The AI "reads" the
-    // replay correctly with a probability that depends on difficulty.
+    // Should `side` review the pending on-field decision?
+    // STOP-GAP: this looks at the true (simulated) DRS evidence and then makes
+    // deliberate random mistakes by difficulty. A real captain cannot see the
+    // replay first. To be replaced by a perception-based model that never
+    // reads DrsEvidence (see docs/DRS_DESIGN.md, "AI reviews"). Not suitable
+    // for ranked online play.
     bool ShouldReview(const Match& m, int side);
 
 private:
@@ -45,9 +49,11 @@ public:
     explicit QuickSim(uint64_t seed) : rng_(seed) {}
     // Produces a legal delivery for the current state of the match.
     Delivery Next(const Match& m);
-    // Turns a close delivery into an appeal with replay evidence, as the
-    // physics/replay system will later do. Returns nullopt when there is
-    // nothing to appeal (the delivery is then bowled normally).
+    // Turns a close delivery into an appeal with replay evidence.
+    // PLACEHOLDER: the "evidence" (edge, ball tracking, grounding, no-ball)
+    // is random numbers, NOT real ball tracking or edge detection. Server-side
+    // ball physics will replace it. Returns nullopt when there is nothing to
+    // appeal (the delivery is then bowled normally).
     std::optional<DecisionCase> MakeCase(const Match& m, const Delivery& d);
 
 private:

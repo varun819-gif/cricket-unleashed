@@ -161,10 +161,16 @@ void Innings::CheckCompletion() {
 
 Status Innings::Check(const Delivery& d) const {
     if (d.runs < 0 || d.runs > 7) return Status::Err("runs out of range");
+    if (d.noBallRunsAs != ExtraType::None) {
+        if (d.extra != ExtraType::NoBall) return Status::Err("noBallRunsAs only applies to a no-ball");
+        if (d.noBallRunsAs != ExtraType::Bye && d.noBallRunsAs != ExtraType::LegBye)
+            return Status::Err("runs off a no-ball are off the bat, byes or leg-byes");
+    }
+    const bool offTheBat = d.extra == ExtraType::None ||
+                           (d.extra == ExtraType::NoBall && d.noBallRunsAs == ExtraType::None);
     if (d.boundary) {
         if (d.runs != 4 && d.runs != 6) return Status::Err("boundary must be 4 or 6");
-        if (d.runs == 6 && d.extra != ExtraType::None && d.extra != ExtraType::NoBall)
-            return Status::Err("a six can only come off the bat");
+        if (d.runs == 6 && !offTheBat) return Status::Err("a six can only come off the bat");
         if (d.dismissal == Dismissal::RunOut) return Status::Err("no run out on a boundary");
     }
     if (!DismissalAllowed(d.dismissal, d.extra, freeHit_))
@@ -231,12 +237,22 @@ Status Innings::Bowl(const Delivery& d, DeliveryRecord* out) {
             break;
         }
         case ExtraType::NoBall:
+            // Law 21.12: penalty is a no-ball extra; runs off the bat go to the
+            // striker; other runs are byes / leg-byes. The striker has faced it.
             extras_.noBalls += rules_->noBallPenalty;
-            creditBat(d.runs);
             bat.balls++;
             bowl.noBalls++;
-            charged = rules_->noBallPenalty + d.runs;
-            rec.runsToTeam = charged;
+            if (d.noBallRunsAs == ExtraType::Bye) {
+                extras_.byes += d.runs;
+                charged = rules_->noBallPenalty;
+            } else if (d.noBallRunsAs == ExtraType::LegBye) {
+                extras_.legByes += d.runs;
+                charged = rules_->noBallPenalty;
+            } else {
+                creditBat(d.runs);
+                charged = rules_->noBallPenalty + d.runs;
+            }
+            rec.runsToTeam = rules_->noBallPenalty + d.runs;
             break;
         case ExtraType::Bye:
             extras_.byes += d.runs;

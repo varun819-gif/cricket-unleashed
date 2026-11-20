@@ -41,6 +41,8 @@ add_executable(cricket_tests
   core/tests/FieldTests.cpp
   core/tests/SessionTests.cpp
   core/tests/DrsTests.cpp
+  core/tests/NoBallTests.cpp
+  core/tests/DrsConfigTests.cpp
 )
 target_link_libraries(cricket_tests PRIVATE cricket_core)
 add_test(NAME cricket_tests COMMAND cricket_tests)

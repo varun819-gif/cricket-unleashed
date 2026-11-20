@@ -22,6 +22,11 @@ struct Delivery {
     // Only a run out (or obstruction) can dismiss the non-striker.
     bool strikerOut = true;
     int fielder = -1;  // fielding-side index (catcher, run-out thrower...), informational
+    // Only for a no-ball (Law 21.12): where the runs came from.
+    // None = off the bat (credited to the striker); Bye / LegBye = not off the
+    // bat (scored as byes / leg-byes, not charged to the bowler). The one-run
+    // no-ball penalty is always added on top.
+    ExtraType noBallRunsAs = ExtraType::None;
 };
 
 struct BatterCard {

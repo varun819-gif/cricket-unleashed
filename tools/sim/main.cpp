@@ -1,7 +1,8 @@
 // cricket_sim: runs a complete AI-vs-AI match through the server-authoritative
 // MatchSession and prints ball-by-ball commentary and the scorecard.
 //
-// Usage: cricket_sim [t20|odi|test|<overs>] [teamA] [teamB] [--hindi] [--seed N] [--quiet]
+// Usage: cricket_sim [t20|odi|test|overs=N] [teamA] [teamB] [--hindi] [--seed N] [--quiet]
+//                    [--drs icc|no-reviews|no-tech|custom:<reviews>:<seconds>[:lose]]
 // Team numbers 0-9 (see list printed with --teams).
 #include <cstdlib>
 #include <cstring>
@@ -47,6 +48,7 @@ int main(int argc, char** argv) {
     uint64_t seed = Toss::SecureSeed();
     bool hindi = false, quiet = false;
     auto teams = FictionalTeams();
+    std::string drsName = "icc";
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "t20") rules = MatchRules::T20();
@@ -55,6 +57,7 @@ int main(int argc, char** argv) {
         else if (a == "--hindi") hindi = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--seed" && i + 1 < argc) seed = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--drs" && i + 1 < argc) drsName = argv[++i];
         else if (a == "--teams") {
             for (size_t t = 0; t < teams.size(); ++t) std::cout << t << ": " << teams[t].name << "\n";
             return 0;
@@ -65,6 +68,10 @@ int main(int argc, char** argv) {
         }
     }
     if (ta == tb) tb = (ta + 1) % static_cast<int>(teams.size());
+    if (!DrsRules::FromName(drsName, &rules.drs)) {
+        std::cerr << "unknown --drs ruleset: " << drsName << "\n";
+        return 2;
+    }
 
     MatchSession session(rules, {teams[ta], teams[tb]}, seed);
     session.RunAi();  // both captains are AI
@@ -75,8 +82,8 @@ int main(int argc, char** argv) {
     uint64_t seen = 0;
     while (session.WaitingFor().what == "delivery") {
         Delivery d = sim.Next(session.GetMatch());
-        if (auto c = sim.MakeCase(session.GetMatch(), d)) session.ResolveAppeal(*c);
-        else session.ResolveDelivery(d);
+        auto c = sim.MakeCase(session.GetMatch(), d);
+        if (!c || !session.ResolveAppeal(*c)) session.ResolveDelivery(d);
         for (const auto& e : session.EventsSince(seen)) {
             if (e.kind == "ball") {
                 if (!quiet) {

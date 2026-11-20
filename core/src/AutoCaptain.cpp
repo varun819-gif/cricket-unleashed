@@ -179,6 +179,8 @@ std::optional<DecisionCase> QuickSim::MakeCase(const Match& m, const Delivery& d
             c.mode = d.dismissal;
             double g = U();
             c.evidence.batterGrounded = g < 0.85 ? Evidence::No : g < 0.9 ? Evidence::Inconclusive : Evidence::Yes;
+            // What the on-field umpire would give with no TV replay.
+            c.onFieldOut = U() < 0.85 ? c.evidence.batterGrounded == Evidence::No : U() < 0.5;
             c.ifNotOut = d;
             c.ifNotOut.dismissal = Dismissal::None;
             return c;
@@ -234,7 +236,14 @@ Delivery QuickSim::Next(const Match& m) {
     }
     if (x < 0.035) {
         d.extra = ExtraType::NoBall;
-        // fall through to a normal shot off the no-ball
+        // Sometimes the batter misses and they run byes / leg-byes.
+        if (U() < 0.15) {
+            d.noBallRunsAs = U() < 0.5 ? ExtraType::Bye : ExtraType::LegBye;
+            d.runs = U() < 0.8 ? 1 : 4;
+            d.boundary = d.runs == 4;
+            return d;
+        }
+        // otherwise fall through to a normal shot off the no-ball
     }
 
     // Skill difference in [-1, 1]: positive favours the bowler.

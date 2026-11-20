@@ -25,6 +25,8 @@ Status Match::ValidateTeam(const Team& t, int squadSize) {
 Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
     : rules_(std::move(rules)), teams_(std::move(teams)), battingFirst_(battingFirst) {
     if (battingFirst != 0 && battingFirst != 1) throw std::invalid_argument("battingFirst must be 0 or 1");
+    if (rules_.drs.reviewsPerInnings < 0 || rules_.drs.reviewTimerSeconds < 0)
+        throw std::invalid_argument("DRS settings cannot be negative");
     for (const auto& t : teams_) {
         Status s = ValidateTeam(t, rules_.squadSize);
         if (!s) throw std::invalid_argument(s.error);
@@ -35,7 +37,8 @@ Match::Match(MatchRules rules, std::array<Team, 2> teams, int battingFirst)
 void Match::StartInnings(int side, std::optional<int> target) {
     innings_.emplace_back(rules_, side, static_cast<int>(innings_.size()), target);
     phase_ = MatchPhase::InProgress;
-    reviewsLeft_ = {rules_.reviewsPerInnings, rules_.reviewsPerInnings};  // fresh reviews each innings
+    const int reviews = rules_.drs.playerReviews ? rules_.drs.reviewsPerInnings : 0;
+    reviewsLeft_ = {reviews, reviews};  // fresh reviews each innings
     pending_.reset();
 }
 
@@ -234,7 +237,16 @@ Status Match::Appeal(const DecisionCase& c, DecisionRecord* decision, DeliveryRe
     if (Current().State() != InningsState::InPlay) return Status::Err("no ball can be bowled right now");
     if (Status s = ValidateCase(c); !s) return s;
     pending_ = c;
-    if (c.kind == DecisionKind::UmpireReferral) return ApplyDecision(JudgeReferral(c), false, -1, decision, ball);
+    // Without a TV umpire nobody checks the front line: a missed no-ball
+    // stays missed (the on-field umpire calls no-balls through Delivery::extra).
+    if (!rules_.drs.thirdUmpire) pending_->evidence.frontFootNoBall = false;
+    if (c.kind == DecisionKind::UmpireReferral) {
+        // No TV umpire: the on-field umpire's own call (onFieldOut) is final.
+        if (!rules_.drs.thirdUmpire) return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
+        return ApplyDecision(JudgeReferral(*pending_), false, -1, decision, ball);
+    }
+    // No player reviews in this competition: the on-field call is final.
+    if (!rules_.drs.playerReviews) return ApplyDecision(JudgeWithoutReview(*pending_), false, -1, decision, ball);
     if (decision) *decision = {};
     return Status::Ok();
 }
@@ -245,8 +257,10 @@ Status Match::ReviewDecision(int side, DecisionRecord* decision, DeliveryRecord*
     if (side != entitled)
         return Status::Err(std::string("only the ") + (pending_->onFieldOut ? "batting" : "fielding") +
                            " side can review this decision");
+    if (!rules_.drs.playerReviews) return Status::Err("player reviews are not used in this competition");
     if (reviewsLeft_[side] <= 0) return Status::Err("no reviews left this innings");
     DrsOutcome o = JudgeReview(*pending_);
+    if (o.outcome == ReviewOutcome::UmpiresCall && !rules_.drs.umpiresCallRetainsReview) o.reviewLost = true;
     if (o.reviewLost) reviewsLeft_[side]--;
     return ApplyDecision(o, true, side, decision, ball);
 }

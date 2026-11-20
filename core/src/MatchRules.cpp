@@ -1,8 +1,48 @@
 #include "cricket/MatchRules.h"
 
 #include <algorithm>
+#include <cstdio>
 
 namespace cricket {
+
+DrsRules DrsRules::Icc() { return DrsRules{}; }
+
+DrsRules DrsRules::NoPlayerReviews() {
+    DrsRules d;
+    d.playerReviews = false;
+    d.reviewsPerInnings = 0;
+    d.reviewTimerSeconds = 0;
+    return d;
+}
+
+DrsRules DrsRules::NoTechnology() {
+    DrsRules d = NoPlayerReviews();
+    d.thirdUmpire = false;
+    return d;
+}
+
+DrsRules DrsRules::Custom(int reviews, int seconds, bool umpiresCallRetains) {
+    DrsRules d;
+    d.reviewsPerInnings = std::max(0, reviews);
+    d.playerReviews = d.reviewsPerInnings > 0;
+    d.reviewTimerSeconds = std::max(0, seconds);
+    d.umpiresCallRetainsReview = umpiresCallRetains;
+    return d;
+}
+
+bool DrsRules::FromName(const std::string& name, DrsRules* out) {
+    if (name == "icc") return *out = Icc(), true;
+    if (name == "no-reviews") return *out = NoPlayerReviews(), true;
+    if (name == "no-tech") return *out = NoTechnology(), true;
+    int reviews = 0, seconds = 0;
+    char lose[8] = {0};
+    int n = std::sscanf(name.c_str(), "custom:%d:%d:%7s", &reviews, &seconds, lose);
+    if (n >= 2 && reviews >= 0 && reviews <= 10 && seconds >= 0 && seconds <= 120) {
+        *out = Custom(reviews, seconds, std::string(lose) != "lose");
+        return true;
+    }
+    return false;
+}
 
 MatchRules MatchRules::T20() {
     MatchRules r;
@@ -33,7 +73,6 @@ MatchRules MatchRules::Test(int days) {
     r.freeHitOnNoBall = false;
     r.followOnLead = days >= 5 ? 200 : days >= 3 ? 150 : 100;
     r.matchOverLimit = days * 90;
-    r.reviewsPerInnings = 2;
     r.defaultMaxOutsideCircle = -1;
     return r;
 }

@@ -24,7 +24,7 @@ Status key: ✅ done · 🟡 in progress · ⬜ not started
 
 | Step | Feature | Status |
 |---|---|---|
-| 1 | DRS for caught + other reviewable decisions, umpire referrals | ✅ done (awaiting review) |
+| 1 | DRS for caught + other reviewable decisions, umpire referrals; corrections: Law 21.12 no-ball runs, configurable rulesets, 15 s timer | 🟡 corrections done, awaiting approval |
 | 2 | Test match lunch / tea / stumps | ⬜ waiting for approval of Step 1 |
 | 3 | Rain interruptions + provisional DLS-style revised targets (non-official) | ⬜ |
 | 4 | Match save and resume | ⬜ |

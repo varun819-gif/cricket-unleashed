@@ -572,7 +572,7 @@ static void FullMatchWithDrs(MatchRules rules, uint64_t seed) {
         int lost[2] = {0, 0};
         for (const auto& d : m.Decisions())
             if (d.inningsIndex == static_cast<int>(i) && d.reviewed && d.result.reviewLost) lost[d.reviewingSide]++;
-        CHECK(lost[0] <= rules.reviewsPerInnings && lost[1] <= rules.reviewsPerInnings);
+        CHECK(lost[0] <= rules.drs.reviewsPerInnings && lost[1] <= rules.drs.reviewsPerInnings);
     }
     for (const auto& d : m.Decisions()) {
         CHECK(!d.result.reason.empty());

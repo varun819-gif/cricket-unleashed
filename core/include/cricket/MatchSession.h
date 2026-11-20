@@ -60,6 +60,8 @@ struct Pending {
     // "review" (side = who may review), "delivery", "none"
     std::string what;
     int side = -1;
+    // For "review": server time (ms) when the review window closes; -1 = no timer.
+    int64_t deadlineMs = -1;
 };
 
 class MatchSession {
@@ -76,6 +78,18 @@ public:
     Status ResolveAppeal(const DecisionCase& c);
     // Server-side: the review timer ran out, so the on-field call stands.
     Status ExpireReviewWindow();
+
+    // ---- Server clock (drives the DRS review timer) ---------------------
+    // The server calls Tick() with its monotonic clock (ms) before handling
+    // each message and regularly from its game loop. When a pending review
+    // window has run out, the on-field decision is applied automatically.
+    // A clock that goes backwards is refused and changes nothing.
+    Status Tick(int64_t nowMs);
+    // Convenience for the network layer: Tick(nowMs) then Submit(c).
+    Status SubmitAt(const Command& c, int64_t nowMs);
+    int64_t NowMs() const { return nowMs_; }
+    // Milliseconds left to ask for a review (-1 when no timed window is open).
+    int64_t ReviewMsLeft() const;
     // Lets AI captains take any decisions that are theirs to take.
     void RunAi();
 
@@ -96,6 +110,7 @@ private:
     void LogBall(const DeliveryRecord& rec);
     void LogDecision(const DecisionRecord& d);
     Status FinishDecision(Status s, const DecisionRecord& d, const DeliveryRecord& ball);
+    Status TimeOutReview();
     bool IsHuman(int side) const;
     int SideOf(const std::string& player) const;
 
@@ -109,6 +124,8 @@ private:
     std::vector<SessionEvent> events_;
     AutoCaptain ai_;
     size_t lastInningsSeen_ = 0;
+    int64_t nowMs_ = 0;
+    std::optional<int64_t> reviewDeadlineMs_;
     bool resultLogged_ = false;
 };
 

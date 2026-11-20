@@ -155,11 +155,17 @@ Delivery FinalDelivery(const DecisionCase& c, const DrsOutcome& o) {
             d.boundary = false;
         }
     }
-    if (o.noBall) {
-        // Byes/leg-byes/wide runs off a no-ball are not modelled yet (see KNOWN_ISSUES).
-        if (d.extra != ExtraType::None && d.extra != ExtraType::NoBall) {
-            d.runs = 0;
-            d.boundary = false;
+    if (o.noBall && d.extra != ExtraType::NoBall) {
+        // The ball becomes a no-ball; the runs keep their origin (Law 21.12):
+        //   off the bat -> striker, byes -> byes, leg-byes -> leg-byes.
+        // A ball that was called wide is a no-ball instead (no-ball takes
+        // precedence, Law 21.14), and runs completed off it were not off the
+        // bat, so they are byes.
+        switch (d.extra) {
+            case ExtraType::Bye: d.noBallRunsAs = ExtraType::Bye; break;
+            case ExtraType::LegBye: d.noBallRunsAs = ExtraType::LegBye; break;
+            case ExtraType::Wide: d.noBallRunsAs = ExtraType::Bye; break;
+            default: d.noBallRunsAs = ExtraType::None; break;
         }
         d.extra = ExtraType::NoBall;
     }

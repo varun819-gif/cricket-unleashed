@@ -10,7 +10,10 @@
 // In both cases the TV umpire also checks for a front-foot no-ball.
 //
 // The evidence (edge detection, ball tracking, replays of the crease) is
-// produced by the game's physics on the server. This file only judges it.
+// produced on the server. This file only judges it. IMPORTANT: today that
+// evidence is a SIMULATED PLACEHOLDER (QuickSim::MakeCase rolls dice). It is
+// not real DRS technology (no Hawk-Eye / UltraEdge or similar). Later it will
+// come from the game's own server-side ball physics.
 // All functions here are pure: same input, same answer.
 #pragma once
 
@@ -47,7 +50,10 @@ struct DrsEvidence {
 struct DecisionCase {
     DecisionKind kind = DecisionKind::PlayerAppeal;
     Dismissal mode = Dismissal::Caught;  // the mode of dismissal appealed for
-    bool onFieldOut = false;             // on-field umpire's call (PlayerAppeal only)
+    // On-field umpire's call. For a PlayerAppeal this is what may be reviewed.
+    // For an UmpireReferral it is only used when the competition has no third
+    // umpire (DrsRules::thirdUmpire == false); then it is final.
+    bool onFieldOut = false;
     // How the ball is scored if the final answer is OUT. dismissal must == mode.
     Delivery ifOut;
     // How the ball is scored if the final answer is NOT OUT. dismissal must be None.

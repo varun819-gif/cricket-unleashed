@@ -32,7 +32,10 @@ sends intents to the server.
 - `ResolveDelivery(Delivery)`: called only by server physics.
 - `ResolveAppeal(DecisionCase)`: server-only close call with replay evidence.
   Player appeals wait for a `Review` command from the entitled side (review
-  or accept). The server-side review timer calls `ExpireReviewWindow()`.
+  or accept) within the ruleset's review window (15 s by default). The
+  server drives the timer with its own clock: `Tick(nowMs)` from the game
+  loop, and `SubmitAt(cmd, nowMs)` for each message. Clients only display
+  the countdown (`Pending::deadlineMs`).
   Referrals (run out, stumping, clean catch) are decided at once. See
   DRS_DESIGN.md.
 - **Event log**: every accepted change gets an increasing id. A reconnecting

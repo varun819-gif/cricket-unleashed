@@ -1,5 +1,7 @@
 #include "cricket/MatchSession.h"
 
+#include <algorithm>
+
 namespace cricket {
 
 namespace {
@@ -13,6 +15,7 @@ std::string BallText(const Match& m, const DeliveryRecord& r) {
                     " to " + bat.xi[r.striker].name + ": ";
     const Delivery& d = r.delivery;
     if (d.extra != ExtraType::None) s += std::string(ToString(d.extra)) + " ";
+    if (d.noBallRunsAs != ExtraType::None && d.runs > 0) s += std::string("+ ") + ToString(d.noBallRunsAs) + "s ";
     if (d.dismissal != Dismissal::None) s += std::string("OUT ") + ToString(d.dismissal) + " (" + bat.xi[r.dismissedBatter].name + ") ";
     if (d.boundary) s += d.runs == 6 ? "SIX" : "FOUR";
     else s += std::to_string(r.runsToTeam) + (r.runsToTeam == 1 ? " run" : " runs");
@@ -70,7 +73,7 @@ Pending MatchSession::WaitingFor() const {
     const Match& m = *match_;
     if (m.Phase() == MatchPhase::Complete) return {"none", -1};
     if (m.Phase() == MatchPhase::AwaitingFollowOnDecision) return {"follow-on", m.AllInnings()[0].BattingSide()};
-    if (m.HasPendingDecision()) return {"review", m.ReviewEntitledSide()};
+    if (m.HasPendingDecision()) return {"review", m.ReviewEntitledSide(), reviewDeadlineMs_ ? *reviewDeadlineMs_ : -1};
     switch (m.Current().State()) {
         case InningsState::AwaitingOpeners: return {"openers", m.BattingSide()};
         case InningsState::AwaitingBatter: return {"batter", m.BattingSide()};
@@ -191,6 +194,8 @@ Status MatchSession::Apply(int side, const Command& c) {
             AfterMatchChange();
             return s;
         case CommandType::Review: {
+            // A late request never gets here: the clock only moves through
+            // Tick(), which closes an expired window before any command is read.
             if (!(s = mustBe("review", p.side))) return s;
             DecisionRecord dec;
             DeliveryRecord ball;
@@ -239,7 +244,10 @@ const char* OutcomeText(ReviewOutcome o) {
 
 void MatchSession::LogDecision(const DecisionRecord& d) {
     std::string t;
-    if (d.kind == DecisionKind::UmpireReferral) {
+    const bool onFieldOnly = d.result.outcome == ReviewOutcome::NotReviewed;
+    if (d.kind == DecisionKind::UmpireReferral && onFieldOnly) {
+        t = std::string("On-field decision, no third umpire (") + ToString(d.appealedFor) + "): ";
+    } else if (d.kind == DecisionKind::UmpireReferral) {
         t = std::string("Referral (") + ToString(d.appealedFor) + "): ";
     } else {
         t = std::string("Appeal (") + ToString(d.appealedFor) + "), on-field " + (d.onFieldOut ? "OUT" : "NOT OUT") +
@@ -251,12 +259,13 @@ void MatchSession::LogDecision(const DecisionRecord& d) {
     if (d.result.noBall) t += " (no-ball)";
     t += " - " + d.result.reason;
     if (d.reviewed) t += " [" + std::to_string(d.reviewsLeftAfter) + " review(s) left]";
-    Log(d.kind == DecisionKind::UmpireReferral ? "third-umpire" : (d.reviewed ? "review" : "decision"), t);
+    Log(d.reviewed ? "review" : (d.kind == DecisionKind::UmpireReferral && !onFieldOnly ? "third-umpire" : "decision"), t);
     events_.back().decision = d;
 }
 
 Status MatchSession::FinishDecision(Status s, const DecisionRecord& d, const DeliveryRecord& ball) {
     if (!s) return s;
+    reviewDeadlineMs_.reset();
     LogDecision(d);
     LogBall(ball);
     return s;
@@ -271,14 +280,43 @@ Status MatchSession::ResolveAppeal(const DecisionCase& c) {
     if (!s) return s;
     if (c.kind == DecisionKind::UmpireReferral) {
         FinishDecision(s, dec, ball);
-    } else {
+    } else if (match_->HasPendingDecision()) {
+        const int secs = match_->Rules().drs.reviewTimerSeconds;
+        if (secs > 0) reviewDeadlineMs_ = nowMs_ + static_cast<int64_t>(secs) * 1000;
         Log("appeal", std::string("Appeal for ") + ToString(c.mode) + ": on-field " +
                           (c.onFieldOut ? "OUT" : "NOT OUT") + ". " + teams_[match_->ReviewEntitledSide()].name +
                           " may review (" + std::to_string(match_->ReviewsRemaining(match_->ReviewEntitledSide())) +
-                          " left)");
+                          " left" + (secs > 0 ? ", " + std::to_string(secs) + " seconds" : std::string()) + ")");
+    } else {
+        // Competition without player reviews: the on-field call was final.
+        FinishDecision(s, dec, ball);
     }
     RunAi();
     return s;
+}
+
+Status MatchSession::TimeOutReview() {
+    Log("review-timeout", "Review time (" + std::to_string(match_->Rules().drs.reviewTimerSeconds) +
+                              " s) is up: the on-field decision stands");
+    return ExpireReviewWindow();
+}
+
+Status MatchSession::Tick(int64_t nowMs) {
+    if (nowMs < nowMs_) return Status::Err("server clock went backwards; ignored");
+    nowMs_ = nowMs;
+    if (match_ && match_->HasPendingDecision() && reviewDeadlineMs_ && nowMs_ >= *reviewDeadlineMs_)
+        return TimeOutReview();
+    return Status::Ok();
+}
+
+Status MatchSession::SubmitAt(const Command& c, int64_t nowMs) {
+    if (Status s = Tick(nowMs); !s && nowMs < nowMs_) return s;
+    return Submit(c);
+}
+
+int64_t MatchSession::ReviewMsLeft() const {
+    if (!match_ || !match_->HasPendingDecision() || !reviewDeadlineMs_) return -1;
+    return std::max<int64_t>(0, *reviewDeadlineMs_ - nowMs_);
 }
 
 Status MatchSession::ExpireReviewWindow() {

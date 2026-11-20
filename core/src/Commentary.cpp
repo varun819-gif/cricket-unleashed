@@ -167,6 +167,10 @@ std::vector<CommentaryLine> CommentaryEngine::Describe(const Match& m, const Del
         out.push_back(Pick("Lead", "wide", v));
     } else if (d.extra == ExtraType::Bye || d.extra == ExtraType::LegBye) {
         out.push_back(Pick("Lead", d.extra == ExtraType::Bye ? "bye" : "legbye", v));
+    } else if (d.extra == ExtraType::NoBall && d.noBallRunsAs != ExtraType::None) {
+        out.push_back(Pick("Lead", "noball", v));
+        v["runs"] = std::to_string(d.runs);
+        if (d.runs > 0) out.push_back(Pick("Lead", d.noBallRunsAs == ExtraType::Bye ? "bye" : "legbye", v));
     } else {
         if (d.extra == ExtraType::NoBall) out.push_back(Pick("Lead", "noball", v));
         if (d.boundary && d.runs == 6) out.push_back(Pick("Lead", "six", v));

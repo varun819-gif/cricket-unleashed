@@ -2,6 +2,7 @@
 // rest of the engine never hard-codes "20 overs" etc.
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "cricket/Types.h"
@@ -15,6 +16,27 @@ struct FieldingPhase {
     int maxOutsideCircle;
 };
 
+// Decision Review System settings. These vary by competition, so they are
+// data, not code. Pick a preset or build a custom one.
+struct DrsRules {
+    bool playerReviews = true;             // teams may review on-field decisions
+    bool thirdUmpire = true;               // TV umpire: run outs, stumpings, clean catches, no-ball checks
+    int reviewsPerInnings = 2;             // UNSUCCESSFUL reviews allowed per side per innings
+    bool umpiresCallRetainsReview = true;  // "umpire's call" does not cost a review
+    int reviewTimerSeconds = 15;           // time to ask for a review; 0 = no timer
+
+    // International standard playing conditions (2 per innings, umpire's call
+    // keeps the review, 15-second timer).
+    static DrsRules Icc();
+    // TV umpire available, but no player reviews (many domestic matches).
+    static DrsRules NoPlayerReviews();
+    // No technology at all: on-field umpires decide everything.
+    static DrsRules NoTechnology();
+    static DrsRules Custom(int reviewsPerInnings, int reviewTimerSeconds, bool umpiresCallRetainsReview = true);
+    // "icc", "no-reviews", "no-tech" or "custom:<reviews>:<seconds>[:lose]".
+    static bool FromName(const std::string& name, DrsRules* out);
+};
+
 struct MatchRules {
     Format format = Format::T20;
     int oversPerInnings = 20;     // 0 = unlimited (Test)
@@ -24,7 +46,7 @@ struct MatchRules {
     bool freeHitOnNoBall = true;
     int followOnLead = 0;         // 0 = no follow-on
     int matchOverLimit = 0;       // Test: total overs in match before a draw (0 = none)
-    int reviewsPerInnings = 2;    // unsuccessful DRS reviews allowed
+    DrsRules drs = DrsRules::Icc();
     int widePenalty = 1;
     int noBallPenalty = 1;
     int squadSize = 11;
