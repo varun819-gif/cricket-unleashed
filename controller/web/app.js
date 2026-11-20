@@ -44,13 +44,15 @@
     }
   })();
 
-  const client = new P.ControllerClient({
+  const clientOptions = {
     url: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
     storage,
     WebSocket: window.WebSocket,
     name: (navigator.userAgentData && navigator.userAgentData.platform) || (/Android/.test(navigator.userAgent) ? 'Android phone' : 'Phone'),
     onEvent: onEvent,
-  });
+  };
+  // The online page supplies its own client (same interface, internet server).
+  const client = window.CUMakeClient ? window.CUMakeClient(clientOptions) : new P.ControllerClient(clientOptions);
 
   function onEvent(type, data) {
     if (type === 'status') return showStatus(data);
@@ -73,7 +75,7 @@
 
   function showStatus(s) {
     const dot = $('conn');
-    dot.className = 'dot' + (s.status === 'connected' ? ' ok' : (s.status === 'reconnecting' || s.status === 'pairing') ? ' wait' : '');
+    dot.className = 'dot' + ((s.status === 'connected' || s.status === 'lobby') ? ' ok' : (s.status === 'reconnecting' || s.status === 'pairing') ? ' wait' : '');
     const side = client.side, role = client.role;
     const teamName = state && state.teams && side >= 0 ? state.teams[side] : (side >= 0 ? 'Team ' + (side + 1) : '');
     const label = {
@@ -84,6 +86,9 @@
       failed: 'Could not connect',
       revoked: 'Unpaired by the TV',
       stopped: 'Stopped',
+      lobby: 'Online lobby',
+      joining: 'Joining…',
+      replaced: 'Signed in on another device',
     }[s.status] || s.status;
     $('who').textContent = label;
     const needHelp = s.status === 'unpaired' || s.status === 'failed' || s.status === 'revoked';
@@ -91,6 +96,7 @@
     $('helpError').textContent = s.status === 'failed' && s.detail ? 'Problem: ' + s.detail + '. Ask the TV for a new QR code.' : '';
     $('forget').hidden = !client.isPaired();
     if (s.status === 'connected') { $('score').hidden = false; render(); }
+    if (s.status === 'lobby') { state = null; ball = null; $('score').hidden = true; render(); }
   }
 
   // ---------------------------------------------------------------- rendering

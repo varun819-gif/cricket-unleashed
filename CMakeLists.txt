@@ -52,6 +52,11 @@ add_library(cricket_online
 target_include_directories(cricket_online PUBLIC online/include)
 target_link_libraries(cricket_online PUBLIC cricket_controller)
 
+# Self-hosted online game server.
+add_executable(cricket_server tools/server/main.cpp)
+target_link_libraries(cricket_server PRIVATE cricket_online)
+target_compile_definitions(cricket_server PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
 # TV/PC side of the phone controller (stands in for the game until Unreal).
 add_executable(cricket_controller_host tools/controller_host/main.cpp)
 target_link_libraries(cricket_controller_host PRIVATE cricket_controller)
@@ -94,4 +99,9 @@ if(NODE_EXE)
            COMMAND ${NODE_EXE} --test ${CMAKE_SOURCE_DIR}/controller/web/tests/protocol.test.mjs)
   set_tests_properties(controller_js PROPERTIES
            ENVIRONMENT "CU_HOST_BIN=$<TARGET_FILE:cricket_controller_host>" TIMEOUT 300)
+  # Online: real server process, two clients, slow/cut connections, server crash.
+  add_test(NAME online_js
+           COMMAND ${NODE_EXE} --test ${CMAKE_SOURCE_DIR}/online/web/tests/online.test.mjs)
+  set_tests_properties(online_js PROPERTIES
+           ENVIRONMENT "CU_SERVER_BIN=$<TARGET_FILE:cricket_server>" TIMEOUT 600)
 endif()

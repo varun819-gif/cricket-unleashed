@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d2e">
+  <title>Cricket Unleashed Online</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="lobby.css">
+</head>
+<body>
+  <header id="bar">
+    <span id="conn" class="dot" aria-hidden="true"></span>
+    <span id="who">Not connected</span>
+    <button id="fullscreen" class="ghost" aria-label="Full screen">⛶</button>
+  </header>
+
+  <!-- Sign in (no password: a guest player lives in this browser) -->
+  <section id="help" hidden>
+    <h1>Play Cricket Unleashed online</h1>
+    <p>Pick a player name. No email or password needed - your guest player is saved in this browser.</p>
+    <label>Player name <input id="gName" maxlength="24" autocomplete="nickname"></label>
+    <label>Country
+      <select id="gCountry">
+        <option value="IN">India</option><option value="PK">Pakistan</option><option value="AU">Australia</option>
+        <option value="GB">England / UK</option><option value="ZA">South Africa</option><option value="NZ">New Zealand</option>
+        <option value="LK">Sri Lanka</option><option value="BD">Bangladesh</option><option value="AF">Afghanistan</option>
+        <option value="">Other</option>
+      </select>
+    </label>
+    <button id="gStart">Play as guest</button>
+    <p id="helpError" class="error"></p>
+    <button id="forget" class="ghost" hidden>Sign out (this guest player is deleted from this browser)</button>
+  </section>
+
+  <!-- Lobby -->
+  <section id="lobby" hidden>
+    <div class="card" id="me"></div>
+    <div class="card">
+      <h2>Your team and match length</h2>
+      <label>Team <select id="team"></select></label>
+      <label>Match <select id="format"></select></label>
+    </div>
+    <div class="card" id="playCard">
+      <h2>Play</h2>
+      <div class="grid2">
+        <button id="quick">Quick match</button>
+        <button id="ranked">Ranked match</button>
+      </div>
+      <button id="createRoom" class="ghost">Create private room (invite a friend)</button>
+      <div class="row">
+        <input id="code" maxlength="8" placeholder="Room code" autocapitalize="characters" autocomplete="off">
+        <button id="joinRoom" class="ghost">Join</button>
+      </div>
+    </div>
+    <div class="card" id="queueCard" hidden>
+      <h2 id="queueText">Finding an opponent…</h2>
+      <button id="cancelQueue" class="ghost">Cancel</button>
+    </div>
+    <div class="card" id="roomCard" hidden>
+      <h2>Private room</h2>
+      <div id="roomCode" class="bigcode"></div>
+      <p>Send this code to your friend. They open this site, tap Join and type it.</p>
+      <ul id="roomPlayers"></ul>
+      <div class="grid2">
+        <button id="startRoom">Start match</button>
+        <button id="leaveRoom" class="ghost">Leave</button>
+      </div>
+    </div>
+    <div class="card" id="endCard" hidden>
+      <h2>Match over</h2>
+      <p id="endText"></p>
+      <p id="endRating"></p>
+      <button id="endOk">Back to lobby</button>
+    </div>
+    <div class="card">
+      <div class="tabs">
+        <button id="tabStats" class="ghost">My stats</button>
+        <button id="tabHistory" class="ghost">History</button>
+        <button id="tabBoard" class="ghost">Leaderboard</button>
+      </div>
+      <div id="boardFilters" hidden>
+        <select id="board">
+          <option value="rating">Rating</option><option value="wins">Wins</option><option value="winpct">Win %</option>
+          <option value="runs">Runs</option><option value="wickets">Wickets</option><option value="sixes">Sixes</option>
+          <option value="fours">Fours</option><option value="highscore">Highest score</option><option value="matches">Matches</option>
+        </select>
+        <select id="period"><option value="all">All time</option><option value="month">30 days</option><option value="week">7 days</option></select>
+        <select id="bMode"><option value="all">All matches</option><option value="ranked">Ranked</option><option value="casual">Casual</option></select>
+        <select id="bCountry"><option value="">World</option><option value="IN">India</option><option value="PK">Pakistan</option>
+          <option value="AU">Australia</option><option value="GB">England / UK</option></select>
+      </div>
+      <div id="tabBody"></div>
+    </div>
+  </section>
+
+  <section id="score" aria-live="polite" hidden>
+    <div id="teams"></div>
+    <div id="total"></div>
+    <div id="chase"></div>
+    <div id="batters"></div>
+    <div id="bowler"></div>
+    <div id="message"></div>
+  </section>
+
+  <main id="panel"></main>
+  <div id="matchBar" hidden><button id="concede" class="ghost small">Concede match</button></div>
+
+  <p id="note" class="note">Online preview. Teams are fictional. Ball outcomes are simulated until the 3D game's ball physics is ready.</p>
+  <div id="toast" role="status"></div>
+
+  <script src="protocol.js"></script>
+  <script src="online.js"></script>
+  <script src="app.js"></script>
+  <script src="lobby.js"></script>
+</body>
+</html>
