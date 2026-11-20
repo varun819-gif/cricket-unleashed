@@ -145,6 +145,35 @@ try {
   await a.selectOption('#bCountry', 'PK');
   await a.waitForFunction(() => document.querySelectorAll('#tabBody tr').length === 1 && document.querySelector('#tabBody').textContent.includes('Bilal'));
   check(true, 'country leaderboard (Pakistan) shows only Bilal');
+  // Flags (permitted assets) appear next to teams.
+  check(await a.locator('#teamFlag').isVisible(), 'team flag shown in the lobby');
+  // A reports B from the history list; an admin reviews and bans B for 24 hours.
+  await a.tap('#tabHistory');
+  await a.waitForSelector('#tabBody button.report');
+  await a.tap('#tabBody button.report');
+  await a.selectOption('#reportReason', 'abuse');
+  await a.fill('#reportNote', 'test report');
+  await a.tap('#reportSend');
+  await a.waitForFunction(() => document.querySelector('#toast').textContent.includes('admin will review'));
+  check(true, 'player report sent from the history list');
+  const adminCtx = await browser.newContext();
+  const adm = await adminCtx.newPage();
+  adm.on('pageerror', (e) => errors.push('admin: ' + String(e)));
+  await adm.goto(url + 'admin');
+  await adm.fill('#token', fs.readFileSync(path.join(data, 'admin.token'), 'utf8').trim());
+  await adm.click('#signIn');
+  await adm.waitForSelector('#reports button');
+  check((await adm.textContent('#reports')).includes('abuse: test report'), 'admin sees the open report');
+  await adm.click('#reports button');
+  await adm.waitForSelector('#playerCard', { state: 'visible' });
+  await adm.fill('#banReason', 'abusive messages (test)');
+  await adm.click('#ban24');
+  await b.waitForSelector('#bannedCard', { state: 'visible', timeout: 5000 });
+  check((await b.textContent('#bannedText')).includes('abusive messages'), 'banned player sees the ban and the reason');
+  if (shots) await adm.screenshot({ path: path.join(shots, 'online-admin.png'), fullPage: true });
+  await b.reload();
+  await b.waitForSelector('#bannedCard', { state: 'visible', timeout: 5000 });
+  check(await b.evaluate(() => !!window.CUOnlineClient.id), 'a temporary ban keeps the account (not deleted from the browser)');
   check(errors.length === 0, 'no browser errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
 } catch (e) {
   console.log('FAIL ' + e.stack);

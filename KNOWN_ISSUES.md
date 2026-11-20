@@ -78,8 +78,9 @@ this milestone have been removed (see CHANGELOG.md).
 25. Guest accounts live in one browser. Clearing browser data or losing
     the phone loses the account (no recovery, no linking to email/Google
     yet).
-26. No report / mute / ban tools, no detection of one person using many
-    guest accounts, no chat (by design for now).
+26. Reports, admin review and bans exist (MODERATION.md), but: one shared
+    admin token (no per-moderator names), no automatic cheat or
+    multi-account detection, no appeals process, no chat (by design).
 27. A TV/PC game cannot yet join online with local phones as controllers;
     online play is phone/PC browser to server. Planned with the Unreal
     client.
@@ -89,6 +90,21 @@ this milestone have been removed (see CHANGELOG.md).
     development; the PostgreSQL/Redis path is documented but not built.
 30. Ball outcomes online are the same **simulated placeholders** as the
     phone controller.
+31. No per-IP limits: behind a tunnel / proxy every player arrives from the
+    same address, so limits are per connection, per account and per server
+    (e.g. 30 new guests a minute for the whole server - a flood can block
+    new sign-ups for a while; existing players are unaffected).
+32. Shot timing: the server corrects claims more than 150 ms away from what
+    it measured. A bot with perfect reactions within that window is not
+    detected.
+33. The name filter is a word list: new spellings can slip through and an
+    unlucky real name could be blocked. Reports + admin rename cover this.
+34. The online Node test suite failed once during the review; every
+    later run passed (see TEST_REPORT.md for the count) and the failure
+    could not be reproduced.
+    Watching for it.
+35. `/tv.json` (server health counts, no personal data) is visible to
+    outsiders when the server is behind a tunnel.
 
 ## Operational notes
 

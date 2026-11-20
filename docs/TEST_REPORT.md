@@ -91,3 +91,15 @@ audio.
 | Browser: phone controller (Pixel 7 emulation) | all checks pass |
 | Browser: two-phone online match (Pixel 7 emulation) | 18/18 |
 | **Two real devices over the internet** | **not done yet** - needs the user's phones |
+
+## Priority 3 review and closure (2026-11-20)
+
+| Suite | Result |
+|---|---|
+| C++ `cricket_tests` (Debug + sanitizers, Release GCC, Release Clang) | 239/239, 0 warnings |
+| Unreal-style compile check (no exceptions, no RTTI) of core + controller | builds, 0 warnings |
+| Node `controller_js` (local phone protocol) | 6/6 |
+| Node `online_js` (real server, slow/cut proxy, server crash) | 3/3; 12 runs during the review, 1 run had one failing check that could not be reproduced (KNOWN_ISSUES #34) |
+| Browser: local phone controller (Pixel 7 emulation) | 13/13 (+1 optional QR-scan check) |
+| Browser: two-phone online match + report + admin ban (Pixel 7 emulation) | 23/23 |
+| **Two real devices over the internet** | **not done yet** - needs the owner's phones (ONLINE_SERVER_SETUP.md §3) |

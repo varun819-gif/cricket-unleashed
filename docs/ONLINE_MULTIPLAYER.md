@@ -8,11 +8,13 @@ for the real-world test that is still needed.
 
 1. Open the game website on a phone or PC. Type a player name, pick a
    country, tap **Play as guest**. No email, no password, no Google login.
-2. In the lobby choose a team and match length (2, 5, 10 overs, T20, ODI).
+2. In the lobby choose a team (India, Pakistan, Australia, England, ... with
+   national flags; players are fictional) and match length (2, 5, 10 overs,
+   T20, ODI).
 3. Then one of:
    - **Quick match** - any opponent, casual (rating doesn't change).
    - **Ranked match** - an opponent with a similar rating; the result moves
-     both ratings.
+     both ratings. Unlocks after 3 full matches.
    - **Create private room** - get a 6-letter code (like `MUKJXA`), send it
      to a friend, they tap **Join** and type it. Host taps **Start**.
 4. The match uses the same screens as the phone controller (toss, captaincy,
@@ -58,13 +60,22 @@ Screenshots (Pixel 7 emulation): `docs/images/online-lobby.png`,
 | Flooding | max 30 messages / second per connection, 8 KB per message, 30 new guests / minute per server, room and match limits |
 | Stolen data file | only SHA-256 of each guest token is stored; tokens are 256-bit random |
 | Win trading | the same two players: from the 4th ranked game within 24 h, no rating change |
+| Farming with fake accounts | ranked unlocks after 3 full matches; a forfeit before 12 balls gives the winner **nothing** (the leaver still loses); wins over provisional accounts (< 5 ranked games) give half points to an established player |
+| Farming leaderboards | stat boards (runs, wins, sixes ...) count only matches played to a result, never forfeits; banned players are hidden |
+| Editing data files | ratings and stats are rebuilt from the match history on every start; every line has a checksum |
+| Guessing room codes | 10 wrong codes a minute, then refused (32^6 ≈ 1 billion codes) |
 | Leaving a lost match | ranked: leaving = **forfeit** after the grace period (also "Concede") |
 | Stalling | a captain who makes no decision for 3 minutes is treated as gone |
 | HTML in names | names are plain text, shown with `textContent` |
+| Offensive names, abuse | name filter, player reports, admin review, bans (MODERATION.md) |
+| Slow / stuck connections filling the server | requests must finish in 10 s; a client that stops reading (> 1 MB waiting) is dropped |
+| Two servers on one data folder | lock file; the second refuses to start |
 
 Not covered yet (honest list): automated cheat detection from patterns,
-reporting / banning players, device fingerprinting, multiple guest accounts
-by one person ("smurfing"). See KNOWN_ISSUES.md.
+device fingerprinting / detecting one person with many accounts, per-IP
+limits (behind a tunnel every connection looks like the same address), a
+bot that plays with perfect reactions within the 150 ms tolerance. See
+KNOWN_ISSUES.md and P3_CLOSURE_REPORT.md.
 
 ## Disconnects and reconnection
 
@@ -81,8 +92,9 @@ by one person ("smurfing"). See KNOWN_ISSUES.md.
 
 ## Server restarts (crash recovery)
 
-Every live match writes a journal line per action (`data/live/<id>.journal`)
-plus a small description file. After a crash or power cut, `cricket_server`
+Every live match writes a journal line per action (`data/live/<id>.journal`),
+the accepted action ids (`<id>.acts`, so a control re-sent after a crash is
+still recognised and never applied twice) and a small description file. After a crash or power cut, `cricket_server`
 rebuilds each live match on start-up (the state is checked to be identical),
 and players reconnect automatically. Tested by killing the server mid-match
 (`online/web/tests/online.test.mjs`). If the machine clock is behind the
@@ -116,6 +128,8 @@ connection.
 | `queue-cancel` | | |
 | `action` | `id`, `a` (control, same as phone controller) | answered with `ack` |
 | `concede` | | counts as a loss |
+| `report` | `id`, `reason`, `note`, `match` | see MODERATION.md |
+| `admin-login` then `admin-reports`, `admin-player`, `admin-ban`, `admin-unban`, `admin-resolve`, `admin-rename` | | admin page only |
 | `stats` | `id` (optional) | |
 | `history` | `limit` | |
 | `leaderboard` | `board`, `period`, `mode`, `country`, `limit` | |
@@ -123,7 +137,9 @@ connection.
 Server → client: `res` (`re` = request number, `ok`, `err`), `match`
 (`id`, `mode`, `side`, `sides`, `last` action id), `state`, `ball`, `ack`,
 `notice`, `room`, `room-closed`, `queued`, `end` (`record`, `rating`,
-`delta`), `sping`, `pong`, `replaced`, `error` (then the socket closes).
+`delta`), `sping`, `pong`, `replaced`, `banned`, `error` (then the socket
+closes). A refused login of a banned player has `banned`, `permanent`,
+`until`, `reason`.
 
 ## Ready for cloud scaling (not needed yet)
 
@@ -139,19 +155,21 @@ The pieces are split so each can move to the cloud later, when you approve:
 
 ## Tests
 
-- C++ (`online/tests/OnlineTests.cpp`, 15 tests): tokens hashed, damaged /
+- C++ (`online/tests/OnlineTests.cpp`, 21 tests; plus web-server limits): tokens hashed, damaged /
   tampered files, Elo + win-trading guard, leaderboards, message numbers,
   wrong token, replaced login, limits, rooms, full India-vs-Pakistan-style
   match, matchmaking + team clash, rating band, reconnection + duplicate
   actions, ranked forfeit, casual AI takeover, idle captain, concede,
-  server-side timing check, crash recovery.
+  server-side timing check, crash recovery, anti-farming rules, ranked
+  unlock, room-code guessing, action ids after a crash, name filter,
+  reports + bans + admin, moderation records after restart.
 - Node (`online/web/tests/online.test.mjs`, 3 tests, real processes and
   sockets): private room through a slow (120 ms) connection that is cut 3
   times; ranked match with the server killed mid-match and restarted;
   protocol guards.
 - Browser (`online/web/tests/browser.e2e.mjs`): two emulated Android phones,
   sign-in, room code, full match by tapping, reload mid-match, result,
-  history, leaderboard (18 checks).
+  history, leaderboard, flags, report, admin ban (23 checks).
 
 All of these run on **one machine**. They are not a substitute for the
 two-device internet test.

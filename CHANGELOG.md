@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.9.1] - 2026-11-20 - Priority 3 review and project decisions
+
+### Added
+- Real country names (India, Pakistan, Australia, England, South Africa,
+  New Zealand, Sri Lanka, Bangladesh, West Indies, Afghanistan) with
+  national flags from flag-icons (MIT); players stay fictional.
+- Moderation: name filter (English + Hindi, look-alike characters), player
+  reports, `/admin` review page with token, 24 h / 7 day / permanent bans,
+  name reset, audit log.
+- Design docs: ACCOUNT_LINKING.md (future optional Google/email),
+  MODERATION.md, UNREAL_DEVELOPMENT_PLAN.md, P3_CLOSURE_REPORT.md.
+- `cricket_unreal_compat_check`: core + controller compile without
+  exceptions / RTTI, as Unreal requires.
+
+### Fixed / hardened (review findings)
+- Web server: slow or stuck connections are dropped (10 s request limit,
+  1 MB unread-output limit, stuck closes).
+- Ranked: no farming with fake accounts (ranked unlock after 3 full
+  matches, early forfeits give the winner nothing, half points vs
+  provisional players); ratings and stats rebuilt from match history;
+  stat leaderboards ignore forfeits; banned players hidden.
+- Crash recovery: accepted action ids saved, so a control re-sent after a
+  server crash is never applied twice.
+- Data: account/match writes are flushed to disk (fsync); only one server
+  can use a data folder; room-code guessing limited; leaderboards cached.
+
 ## [0.9.0] - 2026-11-20 - Priority 3: Online multiplayer backend (preview)
 
 ### Added

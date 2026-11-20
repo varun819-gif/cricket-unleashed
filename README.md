@@ -57,7 +57,7 @@ cmake --build build -j
 | AI | bowling changes (fatigue, death overs, powerplay), batting order, fields, follow-on, declarations, toss, new ball, DRS reviews from players' perception and match context (never sees the evidence; personalities; difficulty) |
 | Commentary | lead + expert lines in English and Hindi, built only from verified ball events, never the same line twice in a row |
 | Multiplayer core | server-authoritative session: join sides, rejects duplicate and out-of-turn commands, review timer, break pauses, weather and penalty actions, ordered event log so a reconnecting client can catch up, crash recovery from the session journal |
-| Teams | 10 fictional international sides (no licensed names or likenesses) |
+| Teams | 10 international sides with real country names and flags (India, Pakistan, ...); **players are fictional**; no board logos or kits |
 | **Phone controller** | QR pairing over home Wi-Fi, secret never sent over the network, signed + numbered messages, captain / player / spectator controls (toss, captaincy, review, bowling, batting, fielding), automatic reconnection with the game waiting for you, TV page with QR codes. Ball outcomes are **simulated placeholders** until Unreal physics. See [docs/MOBILE_CONTROLLER.md](docs/MOBILE_CONTROLLER.md) and [docs/CONNECT_YOUR_PHONE.md](docs/CONNECT_YOUR_PHONE.md) |
 | **Online multiplayer** (preview) | self-hosted `cricket_server` (₹0): guest players (no password), private rooms with 6-letter codes, quick + ranked matchmaking, Elo ratings, server-decided scores, reconnection (match waits 2 min, then ranked forfeit / casual AI takeover), anti-cheat timing check, duplicate-message protection, crash recovery, history, stats, leaderboards. ⚠️ Tested on one machine only - **the two-device internet test is still pending**. See [docs/ONLINE_MULTIPLAYER.md](docs/ONLINE_MULTIPLAYER.md) and [docs/ONLINE_SERVER_SETUP.md](docs/ONLINE_SERVER_SETUP.md) |
 
@@ -88,6 +88,8 @@ docs/                   design documents
 - [Save and resume](docs/SAVE_AND_RESUME.md)
 - [Mobile controller](docs/MOBILE_CONTROLLER.md) · [Connect your phone](docs/CONNECT_YOUR_PHONE.md)
 - [Online multiplayer](docs/ONLINE_MULTIPLAYER.md) · [Run the server for ₹0 + internet test](docs/ONLINE_SERVER_SETUP.md)
+- [Moderation](docs/MODERATION.md) · [Account linking (future)](docs/ACCOUNT_LINKING.md) · [Priority 3 closure report](docs/P3_CLOSURE_REPORT.md)
+- [Unreal Engine development plan](docs/UNREAL_DEVELOPMENT_PLAN.md)
 - [Missing details and assumptions](docs/MISSING_DETAILS.md)
 - [Commentary design](docs/COMMENTARY_DESIGN.md)
 - [Leaderboard design](docs/LEADERBOARD_DESIGN.md)
@@ -98,7 +100,7 @@ docs/                   design documents
 
 ## Licensing rule
 
-Teams, players and tournaments are **fictional** until licences are signed.
+Country names and national flags are used (permitted flag assets, see ASSET_REGISTER). Players and tournaments are **fictional** until licences are signed.
 Real national team names, logos, kits, player likenesses, tournament branding and
 copyrighted music are added only through entries in
 [docs/ASSET_REGISTER.md](docs/ASSET_REGISTER.md).

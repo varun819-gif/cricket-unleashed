@@ -6,15 +6,23 @@ it is added to the project.
 
 | Asset | Type | Source / vendor | Licence | Scope (platforms, regions) | Cost | Approved by | Date |
 |---|---|---|---|---|---|---|---|
-| *(none yet)* | | | | | | | |
+| National flag images: India, Pakistan, Australia, England, South Africa, New Zealand, Sri Lanka, Bangladesh, Afghanistan (`online/web/flags/*.svg`) | SVG images | flag-icons 7.2.3 (github.com/lipis/flag-icons), via the npm registry | MIT (licence text in `online/web/flags/LICENSE.txt`); the flags are national symbols | all | ₹0 | User decision "allow real country names and national flags" | 2026-11-20 |
+| West Indies badge (`online/web/flags/WI.svg`) | SVG image | made by us (West Indies has no national flag) | ours | all | ₹0 | - | 2026-11-20 |
 
 ## Current rules
 
-- **Teams and players are fictional** (`core/src/TeamFactory.cpp`): "Ganga
-  Royals", "Indus Falcons", "Southern Cross", etc. Names are made up and do not
-  copy real players on purpose.
-- **No real national team names, official logos, kits, player faces or
-  tournament branding** until a licence is signed and listed above.
+- **Real country names and national flags are allowed** (user decision,
+  2026-11-20): India, Pakistan, Australia, England, South Africa, New
+  Zealand, Sri Lanka, Bangladesh, West Indies, Afghanistan
+  (`NationalTeams()` in `core/src/TeamFactory.cpp`). Flags must come from a
+  permitted source listed above.
+- **Players stay fictional** (made-up names, no real faces or likenesses).
+  The fictional club names ("Ganga Royals" etc.) remain for offline use.
+- **No cricket board logos (BCCI, PCB, ECB, CWI ...), official kits,
+  player faces or tournament branding (ICC events, IPL ...)** until a
+  licence is signed and listed above. A national flag is not a board logo.
+- Afghanistan uses the black-red-green flag that its cricket team uses at
+  ICC events. This is a sensitive choice: see MISSING_DETAILS.md #27.
 - **No copyrighted music** unless it is licensed. Stadium music will be
   commissioned or royalty-free with a commercial licence.
 - Stadium entertainment / cheerleader performers: all must be adults (18+).

@@ -35,10 +35,16 @@ QR pairing, secure local link, captain / player / spectator controls,
 reconnection, Android browser app, TV page and host program. See
 MOBILE_CONTROLLER.md.
 
-## Priority 3: online multiplayer backend (next)
+## Priority 3: online multiplayer backend ✅ (preview - internet test pending)
 
-Approved to start after Priority 2. Self-hosted / local first: no paid
-services without approval. Open questions are in MISSING_DETAILS.md.
+Built, reviewed and tested on one machine: see ONLINE_MULTIPLAYER.md,
+MODERATION.md and P3_CLOSURE_REPORT.md. **Not complete until two separate
+devices finish a match over the internet** (ONLINE_SERVER_SETUP.md step 3).
+Self-hosted at ₹0; paid hosting only with the owner's approval.
+
+## Next: Unreal Engine 3D development
+
+See [UNREAL_DEVELOPMENT_PLAN.md](UNREAL_DEVELOPMENT_PLAN.md).
 
 ## Milestone 1: what is still needed from the team
 
