@@ -32,6 +32,16 @@ add_library(cricket_core
 )
 target_include_directories(cricket_core PUBLIC core/include)
 
+# Phone controller: pairing, secure local link, controls -> game.
+add_library(cricket_controller
+  controller/src/Crypto.cpp
+  controller/src/Json.cpp
+  controller/src/QrCode.cpp
+  controller/src/ControllerHub.cpp
+)
+target_include_directories(cricket_controller PUBLIC controller/include)
+target_link_libraries(cricket_controller PUBLIC cricket_core)
+
 # Text-mode match simulator / demo.
 add_executable(cricket_sim tools/sim/main.cpp)
 target_link_libraries(cricket_sim PRIVATE cricket_core)
@@ -51,8 +61,10 @@ add_executable(cricket_tests
   core/tests/RainTests.cpp
   core/tests/SaveTests.cpp
   core/tests/IntegrationTests.cpp
+  controller/tests/ControllerUtilTests.cpp
+  controller/tests/ControllerHubTests.cpp
 )
-target_link_libraries(cricket_tests PRIVATE cricket_core)
+target_link_libraries(cricket_tests PRIVATE cricket_core cricket_controller)
 # Lets tests read source files (information-hiding scan of the AI code).
 target_compile_definitions(cricket_tests PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME cricket_tests COMMAND cricket_tests)
