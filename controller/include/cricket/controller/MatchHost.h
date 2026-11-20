@@ -1,0 +1,105 @@
+// MatchHost: runs a match whose sides are controlled by paired phones.
+//
+//  * Captaincy controls (toss, openers, batter, bowler, field, review,
+//    declare, follow-on, new ball, ready after a break) become MatchSession
+//    commands - the rules engine still decides what is legal.
+//  * Gameplay controls run each ball in stages: the fielding side chooses
+//    the delivery ("bowl"), the ball is released, and the batting side has a
+//    timing window to play a shot ("bat"). Fielders can react meanwhile.
+//  * Every phone gets its own state view, including the exact list of
+//    controls it may use right now (role-based controls).
+//  * If every phone of a human side drops out, that side's timers pause
+//    until a phone reconnects.
+//
+// PLACEHOLDER: there is no ball physics yet. The outcome of each ball comes
+// from the statistical QuickSim, nudged by the shot, timing and delivery the
+// players chose (see ResolveWithInputs). Unreal ball physics will replace
+// this; the controls and protocol stay the same.
+#pragma once
+
+#include <array>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "cricket/AutoCaptain.h"
+#include "cricket/MatchSession.h"
+#include "cricket/controller/ControllerHub.h"
+
+namespace cricket::ctl {
+
+struct BowlInput {
+    std::string variation = "stock";  // stock, yorker, bouncer, slower, inswing, outswing, offbreak, legbreak, googly, armball
+    double line = 0.0;    // -1 (wide outside off) .. 0 (stumps) .. +1 (down leg)
+    double length = 0.5;  // 0 (yorker) .. 1 (short)
+    int effort = 70;      // 0..100
+};
+
+struct BatInput {
+    std::string shot = "defend";  // leave, defend, drive, cut, pull, sweep, flick, loft
+    int direction = 0;            // degrees, 0 = straight, + off side, - leg side
+    int timingMs = 0;             // tap time minus ball arrival as the phone saw it
+    bool provided = false;
+};
+
+struct HostConfig {
+    std::array<bool, 2> human{true, false};  // which sides are played with phones
+    int64_t bowlWindowMs = 20000;            // time to choose a delivery
+    int64_t ballFlightMs = 1400;             // release -> arrival, as shown on the phone
+    int64_t batWindowMs = 1200;              // extra time after arrival to play a shot
+    uint64_t seed = 1;
+};
+
+class MatchHost {
+public:
+    MatchHost(MatchRules rules, std::array<Team, 2> teams, ControllerHub& hub, HostConfig cfg);
+
+    // Call often (e.g. every 50 ms) with the current time.
+    void Process(int64_t nowMs);
+
+    MatchSession& Session() { return session_; }
+    const MatchSession& Session() const { return session_; }
+    // The view a given phone receives.
+    Json ViewFor(int side, Role role, int64_t nowMs) const;
+    // Controls this phone may use right now.
+    std::vector<std::string> AllowedControls(int side, Role role) const;
+    // Human side with no connected phone (-1 if none): the game waits for it.
+    int WaitingForController() const;
+    const std::string& Stage() const { return stage_; }
+
+    // PLACEHOLDER resolver (exposed for tests).
+    static Delivery ResolveWithInputs(const Match& m, QuickSim& sim, const BowlInput& bowl, const BatInput& bat,
+                                      std::mt19937_64& rng);
+
+private:
+    Status Apply(const ControllerAction& a, int64_t now);
+    Status Captaincy(int side, const std::string& what, const Json& a, int64_t now);
+    Status Submit(int side, CommandType t, int a, int b, int64_t now);
+    void AdvanceDelivery(int64_t now);
+    void ReleaseBall(int64_t now);
+    void ResolveBall(int64_t now);
+    void PublishStates(int64_t now);
+    bool SideConnected(int side) const;
+    static std::string PlayerId(int side) { return "side-" + std::to_string(side); }
+
+    ControllerHub& hub_;
+    HostConfig cfg_;
+    MatchSession session_;
+    QuickSim sim_;
+    std::mt19937_64 rng_;
+    std::array<uint64_t, 2> seq_{0, 0};
+    // Delivery stages: "" (none), "bowl", "ball".
+    std::string stage_;
+    int64_t deadline_ = 0, arriveAt_ = 0;
+    int64_t pausedAt_ = 0;
+    BowlInput bowl_;
+    BatInput bat_;
+    std::vector<std::string> fieldingCalls_;
+    std::map<std::string, std::string> lastSent_;  // device -> last state JSON
+    std::map<std::string, int64_t> lastSentAt_;
+    std::string message_;                          // last notable event text
+    uint64_t lastEvent_ = 0;
+};
+
+}  // namespace cricket::ctl
