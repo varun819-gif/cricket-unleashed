@@ -133,10 +133,16 @@ void QuickSim::Perceive(DecisionCase& c) {
     const DrsOutcome truth = JudgeReview(c);
     const bool isDismissal = c.call == ScoringCall::None;
     const bool happened = isDismissal ? truth.finalOut : truth.finalCalled;
-    std::normal_distribution<double> noise(0.0, 0.18);
+    // Noise: sum of four uniforms from the raw generator output (identical on
+    // every platform, unlike std::normal_distribution), sigma 0.18.
+    auto noise = [&] {
+        double sum = 0;
+        for (int i = 0; i < 4; ++i) sum += static_cast<double>(rng_() >> 11) * (1.0 / 9007199254740992.0);
+        return (sum - 2.0) * 0.18 * 1.7320508075688772;
+    };
     for (int side = 0; side < 2; ++side) {
         const bool batting = side == battingSide_;
-        double p = (happened ? 0.72 : 0.28) + noise(rng_);
+        double p = (happened ? 0.72 : 0.28) + noise();
         // Optimism bias: fielders lean towards "out", batters towards
         // "not out"; for wide / no-ball calls the bias is reversed.
         double bias = batting ? -0.05 : 0.08;

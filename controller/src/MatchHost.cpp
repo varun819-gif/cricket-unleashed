@@ -199,7 +199,7 @@ void MatchHost::ReleaseBall(int64_t now) {
         c.length = bowl_.length;
         c.effort = bowl_.effort;
         spec_ = outcome_.SpecFor(m, c);
-        path_ = phys::SimulateDelivery(spec_, outcome_.pitch, outcome_.env);
+        path_ = phys::SimulateDelivery(spec_, outcome_.PitchFor(m), outcome_.EnvFor(m));
         realFlightMs_ = static_cast<int64_t>(path_.timeAtCrease * 1000);
     }
     arriveAt_ = now + cfg_.ballFlightMs;

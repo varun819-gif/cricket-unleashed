@@ -404,15 +404,20 @@ TEST(phys_outcome_is_pure_given_the_ball_and_the_shot) {
     auto mp = TestMatch(8);
     Match& m = *mp;
     const FieldSetup field = FieldSetup::FromPreset(FieldPreset::Powerplay);
-    BallOutcome a(1), b(999);  // different seeds: irrelevant for ResolveSpec
     BatChoice drive{"drive", 25, 12, true};
     for (double len : {2.0, 4.0, 6.0, 9.0}) {
+        // The physics (flight, bat, field) never depends on the seed ...
+        BallOutcome a(1), b(999), a2(1);
         const auto ra = a.ResolveSpec(m, field, Pace(138, len, 0.2), drive, nullptr);
         const auto rb = b.ResolveSpec(m, field, Pace(138, len, 0.2), drive, nullptr);
-        CHECK_EQ(ra.summary, rb.summary);
-        CHECK_EQ(ra.delivery.runs, rb.delivery.runs);
-        CHECK(ra.delivery.dismissal == rb.delivery.dismissal);
+        CHECK_EQ(PathHash(ra.path.samples), PathHash(rb.path.samples));
+        CHECK(ra.bat.contact == rb.bat.contact);
         CHECK_EQ(PathHash(ra.field.path), PathHash(rb.field.path));
+        // ... only the batters' judgement of a run does (a player decision),
+        // and the same seed gives exactly the same ball.
+        const auto ra2 = a2.ResolveSpec(m, field, Pace(138, len, 0.2), drive, nullptr);
+        CHECK_EQ(ra.summary, ra2.summary);
+        CHECK_EQ(ra.delivery.runs, ra2.delivery.runs);
     }
 }
 

@@ -24,6 +24,7 @@
 #include "cricket/Drs.h"
 #include "cricket/FieldPlacement.h"
 #include "cricket/Match.h"
+#include "cricket/MatchSession.h"
 
 namespace cricket {
 
@@ -39,6 +40,23 @@ struct BatChoice {
     double direction = 0;        // degrees, 0 straight, + off side, - leg side
     double timingMs = 0;         // in real (physics) time; + late
     bool provided = false;       // false = no shot offered
+    bool advance = false;        // dance down the pitch (can be stumped if missed)
+};
+
+// The fielding side's live input for this ball (phone): catch / dive timing
+// and which end to throw to. Default = the computer fields.
+struct FieldingChoice {
+    phys::FieldingInput assist;
+    int throwEnd = -1;  // -1 automatic, 0 = striker's (keeper's) end, 1 = bowler's end
+};
+
+// Where the match is played: pitch type, weather, day-night.
+struct Conditions {
+    std::string pitchName = "standard";
+    phys::Pitch pitch = phys::Pitch::Standard();
+    phys::V3 wind;              // m/s (+x off side, +y towards the bowler)
+    bool dayNight = false;      // dew in the second innings of a limited-overs game
+    double dewStrength = 0.6;   // 0..1 at its heaviest
 };
 
 // What happened to one ball, with the physics numbers to show players.
@@ -49,8 +67,16 @@ struct BallReport {
     phys::FieldResult field;
     BatChoice shot;
     Delivery delivery;                   // how it is scored (if no appeal / appeal not out handled by case)
-    std::optional<DecisionCase> appeal;  // LBW / caught appeal built from the physics evidence
+    std::optional<DecisionCase> appeal;  // appeal / TV-umpire case built from the physics evidence
     std::string summary;                 // e.g. "138 km/h, pitched 5.8 m, swung 21 cm - outside edge, caught at First slip"
+    // Gameplay detail.
+    int runsAttempted = 0;
+    bool runOutChance = false;    // a close run out (or a run out)
+    double runOutMargin = 0;      // + = batter short by this many seconds
+    int overthrows = 0;
+    bool frontFootNoBall = false; // overstepped (called on the field or found on TV)
+    bool stumpingChance = false;
+    phys::PitchSpot pitchSpot{};  // the surface where it pitched
 };
 
 // Tiny deterministic generator (SplitMix64): same numbers on every platform.
@@ -69,9 +95,13 @@ class BallOutcome {
 public:
     explicit BallOutcome(uint64_t seed) : rng_(seed) {}
 
-    phys::Pitch pitch = phys::Pitch::Standard();
+    Conditions conditions;
     phys::GroundSpec ground;
-    phys::Environment env;
+    // The pitch and air for the next ball: wear grows through a match (a lot
+    // over five Test days); dew comes in the second innings of a day-night
+    // limited-overs game.
+    phys::Pitch PitchFor(const Match& m) const;
+    phys::Environment EnvFor(const Match& m) const;
 
     // The bowler's choice -> what actually leaves the hand (speed from the
     // bowler's skill and effort; line/length with execution scatter).
@@ -88,7 +118,11 @@ public:
                        QuickSim* perceive);
     // Same with a ready-made delivery (tests).
     BallReport ResolveSpec(const Match& m, const FieldSetup& field, const phys::DeliverySpec& spec,
-                           const BatChoice& bat, QuickSim* perceive, const phys::DeliveryPath* path = nullptr);
+                           const BatChoice& bat, QuickSim* perceive, const phys::DeliveryPath* path = nullptr,
+                           const FieldingChoice& fielding = {});
+    // A whole computer-v-computer ball on a session (simulator, tests):
+    // choose, bowl, bat, field, then score it (with any appeal / referral).
+    BallReport PlayComputerBall(MatchSession& session, QuickSim* perceive);
 
     static bool IsSpinner(const Match& m);
 

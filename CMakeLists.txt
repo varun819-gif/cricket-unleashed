@@ -31,6 +31,7 @@ add_library(cricket_core
   core/src/SaveGame.cpp
   core/src/BallPhysics.cpp
   core/src/BallOutcome.cpp
+  core/src/Scorecard.cpp
 )
 target_include_directories(cricket_core PUBLIC core/include)
 # Ball physics must give bit-identical results on every machine (offline game

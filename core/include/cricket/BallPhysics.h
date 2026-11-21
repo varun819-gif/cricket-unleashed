@@ -58,6 +58,11 @@ constexpr double kWideGuideline = 0.89;    // limited-overs wide marking, from m
 struct Environment {
     double airDensity = 1.2;   // kg/m3 (sea level, ~20 C)
     double gravity = 9.81;
+    // Wind (m/s, same axes): drag and swing act on the air speed of the ball.
+    V3 wind;
+    // Dew 0..1 (evening, second innings of day-night games): a wet ball
+    // grips less off the pitch and swings less.
+    double dew = 0;
 };
 
 // What the pitch does to the ball at the bounce.
@@ -65,13 +70,26 @@ struct Pitch {
     double bounce = 0.60;     // vertical coefficient of restitution
     double friction = 0.30;   // sliding friction: grip for spin and pace loss
     double seam = 0.30;       // 0..1: grass / moisture -> movement off the seam
+    // Deterioration 0 (fresh) .. 1 (day-5 Test pitch): more grip and turn,
+    // less seam, lower and more variable bounce, rough in the bowlers'
+    // footmarks. Set per ball by the game (see BallOutcome::PitchFor).
+    double wear = 0;
+    uint64_t cracks = 1;      // seed of this pitch's crack / rough pattern (deterministic)
     // Presets.
     static Pitch Standard() { return {}; }
     static Pitch Green() { return {0.60, 0.28, 0.85}; }   // seamer-friendly
     static Pitch Dusty() { return {0.54, 0.48, 0.10}; }   // turner (day 4-5)
     static Pitch Bouncy() { return {0.68, 0.28, 0.35}; }  // hard, fast (Perth-style)
     static Pitch Flat() { return {0.57, 0.26, 0.10}; }    // batting road
+    static Pitch ByName(const std::string& name);         // standard, green, dusty, bouncy, flat
 };
+
+// The pitch as the ball finds it at one spot (wear, footmarks, cracks).
+struct PitchSpot {
+    double bounce, friction, seam;
+    bool inRough;
+};
+PitchSpot PitchAt(const Pitch& p, double x, double y);
 
 // How the ball leaves the bowler's hand. The physics finds the release
 // angles that land the ball on (targetLength, targetLine) - like a bowler
@@ -98,6 +116,8 @@ struct DeliverySpec {
     // Movement off the seam at the bounce: -1..+1 (which way the seam
     // "bites"). Set by the caller (e.g. from the seam orientation).
     double seamNip = 0;
+    // Front foot at delivery: metres beyond the popping crease (> 0 = no-ball).
+    double overstep = -0.1;
 };
 
 struct Sample {
@@ -149,6 +169,7 @@ struct ShotInput {
     double timingMs = 0;    // + late, - early (relative to the ideal moment)
     double skill = 0.6;     // 0..1 batting ability (reading the ball, bat speed)
     bool leftHanded = false;
+    bool advance = false;   // dances down the pitch (meets the ball earlier; can be stumped)
 };
 
 enum class Contact { Missed, Middled, OutsideEdge, InsideEdge, TopEdge, BottomEdge, Pad, Bowled };
@@ -166,7 +187,11 @@ struct BatResult {
     double readError = 0;         // how far (m) the batter's read was off at contact (late movement)
     // Pad impact (LBW material).
     V3 padImpact;
+    V3 velocityAtPad;
     std::vector<Sample> trackedToStumps;  // ball-tracking path from the pad to the stumps
+    // Out of the crease when the ball passed: seconds needed to get the bat
+    // back behind the popping crease (0 = never left it).
+    double regainGroundS = 0;
 };
 
 // The batter plays `in` at `path`. Pure function. The batter "reads" the ball
@@ -188,14 +213,34 @@ struct FieldResult {
     bool caught = false;
     bool dropped = false;
     int fielder = -1;           // index of the fielder who caught / fielded it
+    int slot = -1;              // which entry of the field vector
     bool boundary = false;
-    int runs = 0;               // runs completed (or 4 / 6 when boundary)
+    int runs = 0;               // safe runs (or 4 / 6 when boundary)
+    // Catching detail.
+    double catchHeight = 0;     // m above the grass when caught (low catches go to the TV umpire)
+    bool boundaryCatch = false; // taken within a step of the rope (or relayed back in)
+    bool steppedOnRope = false; // fielder carried over the rope with the ball: six
+    bool savedAtBoundary = false;
+    // Running detail: when the ball is gathered and when it can reach each
+    // end's stumps (throw + collection + break), from bat on ball.
+    double gatheredAt = 0;
+    V3 gatheredPoint;
+    double throwSpeed = 25;
+    double atStrikerEnd = 1e9, atBowlerEnd = 1e9;
+    double nearestFielderSkill = 0.6;
     double distance = 0;        // how far the ball went (m from the striker's stumps)
     double carry = 0;           // first bounce (or catch) distance
     double hangTime = 0;        // time in the air before the first bounce
     std::vector<Sample> path;   // after the shot
     V3 stopPoint;
     std::string where;          // e.g. "caught at slip"
+};
+
+// A human fielding side's input for this ball (phone "catch" / "dive").
+struct FieldingInput {
+    bool provided = false;
+    double catchBonus = 0;  // + makes catches easier (good timing), - harder
+    double stopBonus = 0;   // + for a well-timed dive
 };
 
 struct GroundSpec {
@@ -206,7 +251,7 @@ struct GroundSpec {
 
 // Follows the ball after the shot and works out the catch / fielding / runs.
 FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& field, const GroundSpec& ground = {},
-                         const Environment& env = {}, bool afterEdge = false);
+                         const Environment& env = {}, bool afterEdge = false, const FieldingInput& assist = {});
 
 // The fielding side's eleven positions for this ball: the nine from the field
 // setup, plus the bowler (follow-through) and the wicketkeeper.

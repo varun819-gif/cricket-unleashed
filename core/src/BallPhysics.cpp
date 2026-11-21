@@ -35,15 +35,19 @@ struct Forces {
     double cd = kCd;
 };
 
-V3 Accel(const Forces& f, V3 v, V3 w) {
+V3 Accel(const Forces& f, V3 vGround, V3 w) {
+    // Air forces depend on the ball's speed through the air (wind).
+    const V3 v = vGround - f.env->wind;
     const double s = Length(v);
     V3 a{0, 0, -f.env->gravity};
     if (s < 1e-9) return a;
     const double q = 0.5 * f.env->airDensity * kArea * s / kBallMass;  // per unit velocity
     a = a + v * (-q * f.cd);
     if (!f.swing) return a;
-    // Swing: sideways force perpendicular to the flight, in the horizontal plane.
-    const double cs = SwingCoefficient(s, f.spec->seamAngle, f.spec->seamWobble, f.spec->shine);
+    // Swing: sideways force perpendicular to the flight, in the horizontal
+    // plane. A wet (dewy) ball swings less.
+    const double cs = SwingCoefficient(s, f.spec->seamAngle, f.spec->seamWobble, f.spec->shine) *
+                      (1.0 - 0.5 * Clamp(f.env->dew, 0, 1));
     const double hx = v.x, hy = v.y;
     const double hl = Length({hx, hy, 0});
     if (hl > 1e-9 && cs != 0) {
@@ -76,7 +80,12 @@ void Step(const Forces& f, V3& p, V3& v, V3 w, double dt) {
 }
 
 // Rigid sphere bouncing on the pitch with friction (R. Cross).
-void Bounce(V3& v, V3& w, const Pitch& pitch, const DeliverySpec& spec) {
+void Bounce(V3 at, V3& v, V3& w, const Pitch& surface, const DeliverySpec& spec, const Environment& env) {
+    const PitchSpot pitch = [&] {
+        PitchSpot s = PitchAt(surface, at.x, at.y);
+        s.friction *= 1.0 - 0.35 * Clamp(env.dew, 0, 1);  // a wet ball skids on
+        return s;
+    }();
     const double vz = v.z;  // negative
     v.z = -pitch.bounce * vz;
     // Velocity of the contact point (bottom of the ball) along the ground.
@@ -132,7 +141,52 @@ V3 FirstPitch(const DeliverySpec& s, const Pitch& pitch, const Environment& env,
     return a.p + (b.p - a.p) * f;
 }
 
+// Smooth deterministic noise in [-1, 1] over the pitch (integer hash of a
+// 0.25 m grid, bilinear blend). Same pitch seed = same cracks.
+double HashUnit(uint64_t seed, int64_t ix, int64_t iy) {
+    uint64_t h = seed ^ (static_cast<uint64_t>(ix) * 0x9E3779B97F4A7C15ULL) ^ (static_cast<uint64_t>(iy) * 0xC2B2AE3D27D4EB4FULL);
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33;
+    return static_cast<double>(h >> 11) * (2.0 / 9007199254740992.0) - 1.0;
+}
+double PitchNoise(uint64_t seed, double x, double y) {
+    const double gx = x / 0.25 + 1000, gy = y / 0.25 + 1000;  // keep positive
+    const int64_t ix = static_cast<int64_t>(gx), iy = static_cast<int64_t>(gy);
+    const double fx = gx - static_cast<double>(ix), fy = gy - static_cast<double>(iy);
+    const double a = HashUnit(seed, ix, iy), b = HashUnit(seed, ix + 1, iy);
+    const double c = HashUnit(seed, ix, iy + 1), d = HashUnit(seed, ix + 1, iy + 1);
+    return Lerp(Lerp(a, b, fx), Lerp(c, d, fx), fy);
+}
+
 }  // namespace
+
+PitchSpot PitchAt(const Pitch& p, double x, double y) {
+    const double wear = Clamp(p.wear, 0, 1);
+    PitchSpot s{p.bounce - 0.06 * wear, p.friction + 0.16 * wear, std::max(0.0, p.seam - 0.25 * wear), false};
+    // Cracks open up as the pitch wears: variable bounce.
+    s.bounce += 0.05 * wear * PitchNoise(p.cracks, x, y);
+    // Bowlers' footmarks (rough) outside both sets of stumps, 1-3.5 m in
+    // front of the batter: much more grip and up-and-down bounce.
+    const double ax = Abs(x);
+    if (wear > 0 && ax > 0.25 && ax < 0.85 && y > 1.0 && y < 3.6) {
+        s.inRough = true;
+        s.friction += 0.22 * wear;
+        s.bounce += 0.09 * wear * PitchNoise(p.cracks ^ 0xABCDEF, x * 2, y * 2);
+    }
+    s.bounce = Clamp(s.bounce, 0.35, 0.80);
+    return s;
+}
+
+Pitch Pitch::ByName(const std::string& n) {
+    if (n == "green") return Green();
+    if (n == "dusty") return Dusty();
+    if (n == "bouncy") return Bouncy();
+    if (n == "flat") return Flat();
+    return Standard();
+}
 
 // ---------------------------------------------------------------- maths
 double Length(V3 a) {
@@ -208,7 +262,7 @@ std::vector<Sample> Integrate(V3 p, V3 v, V3 w, const DeliverySpec& spec, const 
                 if (bounce) *bounce = {ct, cp, cv, w};
             }
             didBounce = true;
-            Bounce(cv, w, pitch, spec);
+            Bounce(cp, cv, w, pitch, spec, env);
             // Finish the step after the bounce.
             const double rest = kDt * (1 - frac);
             if (rest > 0) Step(f, cp, cv, w, rest);
@@ -358,7 +412,7 @@ struct ShotShape {
 
 ShotShape ShapeOf(Shot s) {
     switch (s) {
-        case Shot::Defend: return {true, false, -0.35, 0.45, 0.0, 1.25, 1.5, -10, -40, 40};
+        case Shot::Defend: return {true, false, -0.35, 0.45, 0.0, 1.25, 1.5, -10, -75, 75};
         case Shot::Drive: return {true, false, -0.25, 0.90, 0.0, 0.95, 21, -2, -35, 70};
         case Shot::Loft: return {true, false, -0.30, 0.80, 0.0, 1.10, 27, 25, -60, 60};
         case Shot::Cut: return {false, true, 0.25, 1.40, 0.35, 1.30, 19, 2, 50, 125};
@@ -418,6 +472,7 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
         if (auto pad = PadHit(path, padY, padX)) {
             r.contact = Contact::Pad;
             r.padImpact = pad->p;
+            r.velocityAtPad = pad->v;
             for (const auto& s : path.samples)
                 if (s.p.y <= pad->p.y) r.trackedToStumps.push_back(s);
             return finish();
@@ -436,6 +491,9 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
     if (shape.frontFoot) {
         contactY = path.pitched ? Clamp(path.pitchPoint.y - 0.35, 1.6, 2.5) : 1.9;
         if (in.shot == Shot::Sweep) contactY = 2.4;
+        if (in.advance) contactY = path.pitched ? Clamp(path.pitchPoint.y - 0.10, 2.6, 4.5) : 3.0;  // down the pitch
+        // Out of the crease: dancing down, or a long stretch forward.
+        r.regainGroundS = in.advance ? 1.3 : (contactY >= 2.35 ? 0.35 : 0.0);
     }
     auto at = CrossingAt(path, contactY);
     if (!at) return missed(0.85, -0.10);
@@ -470,12 +528,31 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
     // Pads for a missed shot: the front pad follows the line of the ball.
     const double padY = shape.frontFoot ? contactY - 0.30 : 0.55;
     const double padX = shape.frontFoot ? Clamp(predicted.x - 0.20, -0.35, 0.40) : Clamp(predicted.x - 0.15, -0.30, 0.30);
-    const double t = in.timingMs;
+    // A defensive block (little backlift, soft hands, bat close to the pad)
+    // is much less sensitive to timing than a full swing or a push into a gap.
+    const double t = in.shot != Shot::Defend ? in.timingMs : in.timingMs * (Abs(in.direction) <= 10 ? 0.5 : 0.75);
     if (Abs(t) > 150) return missed(padY, padX);  // far too early / late: the bat is elsewhere
     // Offsets of the ball from the planned contact point.
     double dw = shape.horizontalBat ? at->p.z - bat.z : at->p.x - bat.x;   // across the blade
     const double dl = shape.horizontalBat ? at->p.x - bat.x : at->p.z - bat.z;  // along the blade
     dw += (dw < 0 ? -1.0 : 1.0) * Abs(t) * 0.0007;  // mistimed = the bat comes through in the wrong place
+    // The wrong shot for the length (driving a ball that isn't full, pulling
+    // one that isn't short...) puts the bat in a worse place: 1 cm per metre.
+    {
+        double lo = 0, hi = 30;
+        switch (in.shot) {
+            case Shot::Drive: lo = 0.0, hi = 5.0; break;
+            case Shot::Loft: lo = 0.0, hi = 4.5; break;
+            case Shot::Pull: lo = 7.5, hi = 30; break;
+            case Shot::Cut: lo = 6.5, hi = 30; break;
+            case Shot::Flick: lo = 0.0, hi = 7.0; break;
+            case Shot::Sweep: lo = 2.0, hi = 6.5; break;
+            default: break;
+        }
+        const double len = path.pitched ? path.pitchPoint.y : 0.0;
+        const double mismatch = len < lo ? lo - len : (len > hi ? len - hi : 0.0);
+        dw += (dw < 0 ? -1.0 : 1.0) * 0.01 * mismatch;
+    }
     const double halfW = 0.054;
     const double wOff = Abs(dw);
     if (Abs(dl) > 0.30 || wOff > halfW + kBallRadius) return missed(padY, padX);
@@ -569,7 +646,7 @@ std::vector<Fielder> FieldersFor(const FieldSetup& setup, const std::vector<doub
 }
 
 FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& field, const GroundSpec& ground,
-                         const Environment& env, bool afterEdge) {
+                         const Environment& env, bool afterEdge, const FieldingInput& assist) {
     FieldResult r;
     DeliverySpec still;  // no swing or spin after the shot
     Forces f{&still, &env, false};
@@ -578,9 +655,12 @@ FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& fiel
     bool bounced = false;
     bool rolling = false;
     const double dt = 0.005;
+    const double rope = ground.boundaryRadius;
     auto fromCentre = [](V3 q) { return Length(V3{q.x, q.y - kPitchCentreY, 0}); };
     r.path.push_back({0, p, v, {}});
-    // 1. Follow the ball until it stops or crosses the boundary.
+    size_t ropeIndex = SIZE_MAX;  // first sample beyond the rope
+    // 1. Follow the ball until it stops or crosses the boundary (a ball in
+    //    the air is followed a little beyond the rope, for relay catches).
     while (t < 20) {
         if (!rolling) {
             V3 np = p, nv = v;
@@ -614,11 +694,13 @@ FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& fiel
         }
         t += dt;
         r.path.push_back({t, p, v, {}});
-        if (fromCentre(p) >= ground.boundaryRadius) {
+        if (ropeIndex == SIZE_MAX && fromCentre(p) >= rope) {
+            ropeIndex = r.path.size() - 1;
             r.boundary = true;
             r.runs = bounced ? 4 : 6;
-            break;
+            if (bounced || p.z < 0.5) break;
         }
+        if (ropeIndex != SIZE_MAX && (fromCentre(p) > rope + 1.5 || p.z < kBallRadius + 0.01)) break;
     }
     if (!bounced) {
         r.carry = Length(V3{p.x, p.y, 0});
@@ -626,94 +708,136 @@ FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& fiel
     }
     r.stopPoint = p;
     // 2. Who gets to it first? Scan the flight in time order.
-    // From bat on ball: the non-striker is already backing up. Elite single ~3 s.
     const double runFirst = 3.0, runNext = 2.7, margin = 0.3;
     auto reachOf = [](const Fielder& fl) { return fl.keeper ? 1.8 : 1.5; };
     auto reactOf = [&](const Fielder& fl) { return (fl.keeper || fl.closeCatcher) ? 0.12 : 0.25; };
-    auto speedOf = [](const Fielder& fl) { return 6.0 + 2.0 * fl.skill; };
-    bool inAir = true;
-    std::vector<char> beaten(field.size(), 0);  // fielders the ball has already gone past
-    for (size_t i = 0; i < r.path.size(); ++i) {
-        const Sample& s = r.path[i];
-        if (s.t > r.hangTime + 1e-9) inAir = false;
-        int best = -1;
-        double bestSpare = -1;
-        for (size_t k = 0; k < field.size(); ++k) {
-            const Fielder& fl = field[k];
-            if (beaten[k]) continue;
-            const double d = Length(V3{s.p.x - fl.pos.x, s.p.y - fl.pos.y, 0});
-            const double need = reactOf(fl) + std::max(0.0, d - reachOf(fl)) / speedOf(fl);
-            if (need > s.t) continue;
-            const double maxH = fl.keeper ? 2.6 : 2.4;
-            if (inAir ? (s.p.z > maxH || s.p.z < 0.02) : s.p.z > 1.5) continue;
-            const double spare = s.t - need;
-            if (spare > bestSpare) best = static_cast<int>(k), bestSpare = spare;
-        }
-        if (best < 0) continue;
-        const Fielder& fl = field[best];
-        if (!inAir) {
-            // A ground stop: a hard-hit ball that needs a dive can beat the fielder.
-            const double d = Length(V3{s.p.x - fl.pos.x, s.p.y - fl.pos.y, 0});
-            const double speed = Length(V3{s.v.x, s.v.y, 0});
-            const double hardness = speed / 30.0 + (d > 0.8 ? 0.3 : 0) - std::min(bestSpare, 0.6) * 0.6;
-            const double ability = 0.45 + 0.5 * fl.skill + (fl.keeper ? 0.1 : 0);
-            if (hardness > ability) {
-                beaten[best] = 1;
-                continue;
-            }
-        }
+    // Time to cover d metres from standing: accelerate at ~8.5 m/s2 up to top speed.
+    auto runTime = [](const Fielder& fl, double d) {
+        const double vmax = 6.0 + 2.0 * fl.skill, acc = 8.5;
+        const double dAcc = vmax * vmax / (2 * acc);
+        if (d <= 0) return 0.0;
+        if (d < dAcc) return std::sqrt(2 * d / acc);
+        return vmax / acc + (d - dAcc) / vmax;
+    };
+    auto finishFielded = [&](const Fielder& fl, size_t slot, const Sample& s, size_t i, double fumble) {
+        r.boundary = false;  // stopped inside the rope
         r.fielder = fl.index;
-        double fumble = 0;
-        if (inAir) {
-            // A catch: harder when the ball is fast, needs a dive, or arrives
-            // just as the fielder gets there. Deterministic.
-            const double d = Length(V3{s.p.x - fl.pos.x, s.p.y - fl.pos.y, 0});
-            const bool dive = d > 0.8;
-            const double speed = Length(s.v);
-            const double hardness = speed / 35.0 + (dive ? 0.35 : 0) - std::min(bestSpare, 0.6) * 0.5 +
-                                    (afterEdge && !fl.closeCatcher && !fl.keeper ? 0.2 : 0);
-            const double ability = 0.45 + 0.5 * fl.skill + ((fl.closeCatcher || fl.keeper) ? 0.15 : 0);
-            if (hardness <= ability) {
-                r.caught = true;
-                r.boundary = false;
-                r.runs = 0;
-                r.distance = Length(V3{s.p.x, s.p.y, 0});
-                r.path.resize(i + 1);
-                r.stopPoint = s.p;
-                return r;
-            }
-            r.dropped = true;
-            fumble = 1.0;
-        }
-        r.boundary = false;  // stopped (or caught) inside the rope
-        // Fielded on the ground (or after a drop): pick up, throw to the nearer end.
-        const double pickup = (fl.keeper ? 0.3 : 0.6) + fumble;  // gather, turn, aim
-        const double toStriker = Length(V3{s.p.x, s.p.y, 0});
-        const double toBowler = Length(V3{s.p.x, s.p.y - kPitchLength, 0});
-        const double throwSpeed = 22 + 6 * fl.skill;
-        const double ballAtStumps = s.t + pickup + std::min(toStriker, toBowler) / throwSpeed + 0.5;  // collect + break
+        r.slot = static_cast<int>(slot);
+        r.nearestFielderSkill = fl.skill;
+        // Pick up, turn, throw; collection and breaking the stumps take ~0.5 s.
+        r.gatheredAt = s.t + (fl.keeper ? 0.3 : 0.6) + fumble;
+        r.gatheredPoint = s.p;
+        r.throwSpeed = 22 + 6 * fl.skill;
+        r.atStrikerEnd = r.gatheredAt + Length(V3{s.p.x, s.p.y, 0}) / r.throwSpeed + 0.5;
+        r.atBowlerEnd = r.gatheredAt + Length(V3{s.p.x, s.p.y - kPitchLength, 0}) / r.throwSpeed + 0.5;
+        const double ballAtStumps = std::min(r.atStrikerEnd, r.atBowlerEnd);
         int runs = 0;
         while (runs < 3 && runFirst + runNext * runs + margin <= ballAtStumps) ++runs;
         r.runs = runs;
         r.distance = Length(V3{s.p.x, s.p.y, 0});
         r.stopPoint = s.p;
         r.path.resize(i + 1);
+    };
+    bool inAir = true;
+    std::vector<char> beaten(field.size(), 0);  // fielders the ball has already gone past
+    for (size_t i = 0; i < r.path.size(); ++i) {
+        const Sample& s = r.path[i];
+        if (s.t > r.hangTime + 1e-9) inAir = false;
+        const bool beyond = ropeIndex != SIZE_MAX && i >= ropeIndex;
+        if (beyond && !inAir) break;
+        const double dc = fromCentre(s.p);
+        int best = -1;
+        double bestSpare = -1;
+        for (size_t k = 0; k < field.size(); ++k) {
+            const Fielder& fl = field[k];
+            if (beaten[k]) continue;
+            const double d = Length(V3{s.p.x - fl.pos.x, s.p.y - fl.pos.y, 0});
+            const double need = reactOf(fl) + runTime(fl, d - reachOf(fl));
+            if (need > s.t) continue;
+            // Outfielders set at the rope can leap for a ball going over.
+            const bool atRope = fromCentre(fl.pos) > rope - 8;
+            const double maxH = fl.keeper ? 2.6 : (atRope && s.t - need > 0.35 ? 3.0 : 2.4);
+            if (inAir ? (s.p.z > maxH || s.p.z < 0.02) : s.p.z > 1.5) continue;
+            const double spare = s.t - need;
+            if (spare > bestSpare) best = static_cast<int>(k), bestSpare = spare;
+        }
+        if (best < 0) continue;
+        const Fielder& fl = field[static_cast<size_t>(best)];
+        const double d = Length(V3{s.p.x - fl.pos.x, s.p.y - fl.pos.y, 0});
+        if (!inAir) {
+            // A ground stop: a hard-hit ball that needs a dive can beat the fielder.
+            const double speed = Length(V3{s.v.x, s.v.y, 0});
+            const double hardness = speed / 30.0 + (d > 0.8 ? 0.3 : 0) - std::min(bestSpare, 0.6) * 0.6 - assist.stopBonus;
+            const double ability = 0.45 + 0.5 * fl.skill + (fl.keeper ? 0.1 : 0);
+            if (hardness > ability) {
+                beaten[static_cast<size_t>(best)] = 1;
+                continue;
+            }
+            r.savedAtBoundary = dc > rope - 3.0;
+            finishFielded(fl, static_cast<size_t>(best), s, i, 0);
+            return r;
+        }
+        // A catch: harder when the ball is fast, needs a dive, arrives just as
+        // the fielder gets there, or is taken at the rope. Deterministic.
+        const bool dive = d > 0.8;
+        const double speed = Length(s.v);
+        const bool nearRope = beyond || dc > rope - 1.0;
+        double hardness = speed / 35.0 + (dive ? 0.35 : 0) - std::min(bestSpare, 0.6) * 0.5 +
+                          (afterEdge && !fl.closeCatcher && !fl.keeper ? 0.2 : 0) - assist.catchBonus;
+        if (nearRope) hardness += beyond ? 0.30 : 0.12;  // balance on the rope / relay
+        const double ability = 0.53 + 0.5 * fl.skill + ((fl.closeCatcher || fl.keeper) ? 0.15 : 0);
+        if (hardness <= ability) {
+            // Running hard at the rope: the fielder's momentum may carry them over.
+            if (!beyond && dc > rope - 1.0 && bestSpare < 0.15 && fl.skill < 0.6) {
+                r.steppedOnRope = true;
+                r.boundary = true;
+                r.runs = 6;
+                r.fielder = fl.index;
+                r.path.resize(i + 1);
+                return r;
+            }
+            r.caught = true;
+            r.boundaryCatch = nearRope;
+            r.catchHeight = s.p.z;
+            r.boundary = false;
+            r.runs = 0;
+            r.fielder = fl.index;
+            r.slot = best;
+            r.distance = Length(V3{s.p.x, s.p.y, 0});
+            r.path.resize(i + 1);
+            r.stopPoint = s.p;
+            return r;
+        }
+        if (beyond) {  // a failed relay: the six stands
+            beaten[static_cast<size_t>(best)] = 1;
+            continue;
+        }
+        r.dropped = true;
+        finishFielded(fl, static_cast<size_t>(best), s, i, 1.0);
         return r;
     }
     // Nobody reached it before it stopped / crossed the rope.
-    r.distance = Length(V3{p.x, p.y, 0});
-    if (r.boundary) return r;
-    double arrive = 1e9;
-    for (const auto& fl : field) {
-        const double d = Length(V3{p.x - fl.pos.x, p.y - fl.pos.y, 0});
-        const double need = reactOf(fl) + std::max(0.0, d - reachOf(fl)) / speedOf(fl);
-        if (need < arrive) arrive = need, r.fielder = fl.index;
+    if (ropeIndex != SIZE_MAX) {
+        r.path.resize(std::min(r.path.size(), ropeIndex + 1));
+        r.distance = Length(V3{r.path.back().p.x, r.path.back().p.y, 0});
+        return r;
     }
-    const double tI = std::max(t, arrive);
-    const double ballAtStumps = tI + 0.6 + std::min(Length(V3{p.x, p.y, 0}), Length(V3{p.x, p.y - kPitchLength, 0})) / 25 + 0.5;
-    int runs = 0;
-    while (runs < 3 && runFirst + runNext * runs + margin <= ballAtStumps) ++runs;
-    r.runs = runs;
+    r.distance = Length(V3{p.x, p.y, 0});
+    double arrive = 1e9;
+    size_t who = 0;
+    for (size_t k = 0; k < field.size(); ++k) {
+        const Fielder& fl = field[k];
+        const double d = Length(V3{p.x - fl.pos.x, p.y - fl.pos.y, 0});
+        const double need = reactOf(fl) + runTime(fl, d - reachOf(fl));
+        if (need < arrive) arrive = need, who = k;
+    }
+    if (field.empty()) {
+        r.runs = 3;
+        return r;
+    }
+    Sample stop{std::max(t, arrive), p, {}, {}};
+    r.path.push_back(stop);
+    finishFielded(field[who], who, stop, r.path.size() - 1, 0);
     return r;
 }
 
