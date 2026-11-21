@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.12.0] - 2026-11-21 - Complete gameplay physics, scorecards, controller fielding
+
+### Added
+- Running between the wickets with run-outs (TV umpire, physics margin),
+  direct hits, overthrows; byes; leg byes (Law 23); stumpings; front-foot
+  no-balls (TV check on wickets); boundary catches / relay catches / stepping
+  on the rope / boundary saves; bump balls; wind; dew; pitch wear, cracks and
+  footmarks (deterministic per pitch).
+- Scorecard module (`Scorecard.h`): SR, economy, fall of wickets,
+  partnerships, `CheckScorecard` cross-checks.
+- Phone / browser: fielding prompt (catch / dive timing, throw end), step out,
+  scorecard view, match conditions. Online matches get a venue (pitch, wind,
+  day-night), kept across server restarts; single player lets you pick the pitch.
+- `cricket_calibration` (realism bands; in ctest for Release builds).
+- `cricket_sim` now plays every ball with the physics and prints the full card.
+- Tests: gameplay tests (11), controller fielding test; 273 C++ tests total.
+
+### Changed / fixed
+- Fielding buttons on the phone previously had no effect: now they do.
+- Fielders accelerate from standing; defensive blocks are less error-prone
+  than full swings; wrong-shot-for-the-length risk; formats recalibrated.
+- Perception noise uses a platform-independent generator.
+
 ## [0.11.0] - 2026-11-21 - Real cricket ball physics
 
 ### Added

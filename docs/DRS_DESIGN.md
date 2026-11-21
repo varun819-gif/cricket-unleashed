@@ -21,8 +21,13 @@ Tests: `core/tests/DrsTests.cpp`, `DrsConfigTests.cpp`, `NoBallTests.cpp`.
 >   (in-game ball tracking), and whether the bat touched it. It is still not
 >   a real-world DRS product, and screens will not use real DRS brand names
 >   unless licensed (see ASSET_REGISTER.md).
-> - `QuickSim::MakeCase` (in `AutoCaptain.cpp`), which rolls dice, is now
->   used only by the text simulator `cricket_sim`.
+> - **Update (gameplay milestone):** every DRS / TV-umpire case now comes
+>   from the physics, including run outs and stumpings (how far short the
+>   batter was, in time), low catches (how high above the grass), boundary
+>   catches, "six or four?" checks (how high the ball was at the rope), front
+>   -foot no-balls (where the front foot landed) and close wides. The text
+>   simulator `cricket_sim` now uses the physics too; `QuickSim::MakeCase`
+>   (dice) is no longer used by any game mode (kept only in old unit tests).
 >
 > So the DRS **rules** are tested and reliable. The DRS **evidence** is a
 > stand-in until the physics exists.

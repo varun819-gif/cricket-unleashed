@@ -115,11 +115,20 @@ this milestone have been removed (see CHANGELOG.md).
     measurements where they exist and were tuned so whole matches look like
     T20 cricket. Computer v computer T20 averages: ~135 runs, ~5.5 wickets
     per innings (real T20Is: ~150-165 runs, ~6-7 wickets).
-37. Not modelled yet: run-outs, stumpings, hit wicket, overthrows, front-foot
-    no-balls, leg byes off the pad, catches at the boundary rope, wind,
-    humidity, dew, pitch wear changing during a match, ball getting softer.
-38. The batter's body is simple (bat zone + pads); there is no 3D body
-    collision (comes with Unreal animation).
+37. Now modelled (2026-11-21): run-outs, stumpings, overthrows, byes, leg
+    byes, front-foot no-balls, boundary catches and saves, wind, dew, pitch
+    wear and footmarks. Still not modelled: hit wicket, obstructing the
+    field, humidity, the ball getting softer, rain making the outfield slow,
+    mankading, the batter choosing NOT to run on a misfield.
+38. The batter's body is simple (bat zone + pads/thigh box); there is no 3D
+    body collision (comes with Unreal animation). Running between the wickets
+    is decided by the computer for both sides (humans don't call runs).
+40. Calibration (computer v computer, see BALL_PHYSICS.md): stumpings
+    (<1% of wickets) and run-outs (~5%) are a little rare; Test run rate is
+    a little high (~3.8); ODI extras a little high (~12 an innings).
+41. Pitch and weather effects use simple rules (wear = overs bowled;
+    footmark zones fixed outside the stumps; dew only in the second innings
+    of day-night limited-overs games). They are plausible, not measured.
 39. Computer players' decisions and execution vary with a seeded generator
     (same seed = same match). Human inputs decide human players' balls.
 

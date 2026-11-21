@@ -82,7 +82,7 @@ anything else with a reason.
 | Who | Controls |
 |---|---|
 | **Captain** (one team) | toss call / decision, openers, next batter, bowler, field preset, review / accept (with countdown), declare, follow-on, new ball, ready after a break, plus everything a player can do |
-| **Player** (one team) | bowl (delivery type, tap-the-pitch line and length, effort), bat (shot, direction pad, timing tap), fielding reactions (dive left/right, catch, throw to keeper/bowler), ready after a break |
+| **Player** (one team) | bowl (delivery type, tap-the-pitch line and length, effort), bat (shot, direction pad, timing tap, **step out** down the pitch), **fielding** when the ball goes to one of your fielders ("Catch it!" / "Stop it!" with a timing tap, throw to the keeper's or bowler's end), ready after a break |
 | **Spectator** | watches the live score, no controls |
 
 **Each ball:** the fielding side chooses the delivery (20 s, then a stock ball
@@ -96,6 +96,25 @@ leave can't be caught, defending gives no boundaries, good timing gives more
 boundaries, and bad timing gives more catches. The phone and TV say so.
 Unreal ball physics will replace this; the controls and protocol stay the
 same.
+
+## Status report (2026-11-21)
+
+| Requirement (Priority 2) | Status | Tested by |
+|---|---|---|
+| QR-based pairing | done | C++ hub tests, Node protocol tests, Android-emulated browser test (QR scanned from the TV page) |
+| Secure local Wi-Fi link | done: secret only in the QR, mutual proof, signed + numbered messages (authenticated, not encrypted) | hub tests incl. replay / forgery / wrong-secret cases |
+| Batting controls | done: shot, direction, timing tap; **new: step out** | browser tests, `ctl_host_*` tests |
+| Bowling controls | done: delivery type, line/length by tapping the pitch, effort | browser tests |
+| Captaincy controls | done: toss, openers, batter, bowler, field preset, review/accept, declare, follow-on, new ball, ready | `ctl_host_role_based_controls` |
+| **Fielding controls** | **completed now.** Before this milestone the phone's fielding buttons were sent but had no effect on the ball (a gap). Now the fielding side gets a prompt when the ball goes to a fielder; a well-timed CATCH / DIVE makes the catch or stop easier, a badly-timed one harder; THROW chooses the end for a run out | `ctl_host_fielding_prompt_step_out_scorecard_and_conditions`, single-player browser test |
+| Reconnection | done: automatic, the game waits for a missing phone | hub, host and browser tests |
+| Android browser support | done, **tested on emulated Pixel 7 only**, not on a physical phone | Playwright |
+| Connection instructions | done: CONNECT_YOUR_PHONE.md, on-screen help | - |
+| **Scorecard on the phone** | **new**: full card (batting R/B/4s/6s/SR, bowling O/M/R/W/Econ, extras, fall of wickets, partnerships) | browser test checks the numbers add up |
+| **Match conditions on the phone** | **new**: pitch type and wear, wind, dew | host test |
+
+Still missing: running between the wickets is decided by the computer (the
+batters judge each run); no physical-phone test yet.
 
 ## Reconnection
 

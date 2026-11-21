@@ -24,6 +24,22 @@ scored ball). Tests: `core/tests/PhysicsTests.cpp`,
 | Fielders | 9 from the field setting + wicketkeeper + bowler; reaction time, running speed and dive reach by skill; **catches** (harder when fast, diving or arriving late) and **drops**; **ground stops** (hard-hit balls can beat a diving fielder); **runs** from batter running time vs pick-up + throw |
 | Umpiring | wides (limited overs guideline 0.89 m, down the leg side, over head height), waist-high full toss = no-ball, LBW evidence (pitched, impact, wickets, shot offered), caught-behind edges (a very faint edge may be missed on the field and go to DRS) |
 
+## 1b. Gameplay built on the physics (2026-11-21)
+
+| Feature | How it works |
+|---|---|
+| Running, run outs | the batters judge each run from where the ball is gathered (allowing for a direct hit), with a misjudgement that shrinks with skill; the fielders throw to the end that gives the best chance; a close one is a shy at the stumps (hit chance by skill and distance). Run out = the throw (or direct hit) beats the batter; it goes to the TV umpire with the time margin as evidence |
+| Overthrows | a missed shy with nobody backing up runs on; the ball is followed again and the fielders chase (can be 4 overthrows) |
+| Byes / leg byes | byes when the keeper can't take the ball cleanly; leg byes when the ball comes off the pad or thigh AND a shot was offered (Law 23) - it glances away behind square |
+| Stumpings | a batter who stepped out (or stretched far forward) and missed, keeper standing up to spin, keeper's gather + break vs the batter getting back; TV umpire with the margin |
+| Front-foot no-balls | where the front foot lands depends on effort and skill; clear ones are called, marginal ones only show up on the TV check when a wicket falls |
+| Boundary catches | catches within 3 m of the rope, relay catches over the rope, fielders carried over the rope (six), leaps for balls just over; boundary saves |
+| Bump balls | a ball hit down into the ground from below waist height can't be caught before it bounces |
+| Wind | drag, swing and lift use the ball's speed through the air (cross / head / tail winds) |
+| Dew | second innings of day-night limited-overs games: less grip off the pitch, less swing |
+| Pitch wear | grows with overs bowled (a lot over five Test days): more grip and turn, less seam, lower and more variable bounce from cracks (a deterministic pattern per pitch), rough in the bowlers' footmarks |
+| Phone fielding | the fielding side can time a catch / dive and choose the throw end; this nudges the physics (better or worse) |
+
 ## 2. Typical numbers it produces
 
 | Delivery | Result |
@@ -38,19 +54,26 @@ scored ball). Tests: `core/tests/PhysicsTests.cpp`,
 
 ## 3. Calibration (whole matches)
 
-Computer v computer T20s, both sides played through the physics:
+`cricket_calibration` plays complete computer-v-computer matches (60 T20s,
+16 ODIs, 6 Tests, 30 T20s on each pitch, 30 strong-v-weak) and checks each
+value against a sanity band (it runs in `ctest` for Release builds).
+Latest run:
 
-| | This model (40 matches) | Real T20 internationals (typical) |
+| | This model | Real internationals (approx.) |
 |---|---|---|
-| Runs per innings | ~135 | ~150-165 |
-| Wickets per innings | ~5.5 | ~6-7 |
-| Dot balls | ~49% | ~38-42% |
-| Fours / sixes per innings | ~15 / ~3 | ~13 / ~6 |
-| Dismissals | caught 71%, bowled 16%, LBW 12% | caught ~65%, bowled ~15%, LBW ~10%, run out ~7% |
+| T20 runs / wickets per innings | 162 / 5.0 | ~150-165 / ~6-7 |
+| T20 dot balls, 4s, 6s per innings | 34%, 13.2, 5.8 | ~38-42%, ~13, ~6-7 |
+| T20 dismissals | caught 54%, bowled 23%, lbw 18%, run out 5% | caught ~60-65%, bowled ~15%, lbw ~10%, run out ~7% |
+| ODI runs / wickets per innings | 271 / 6.1 | ~250-280 / ~7 |
+| Test run rate, runs per wicket | 3.77, ~33 | ~3.2-3.4, ~30-33 |
+| Pitch effect (T20 runs per innings) | flat 184, standard 177, dusty 157, bouncy 158, green 147 | flat roads score most; green tops favour seamers |
+| Spinners' share of wickets | dusty 45%, green 29% | turners favour spin |
+| Strong v weak side (70% ratings) | strong side won 30 of 30 | mismatches are one-sided |
 
-The real values are approximate public averages, used only as a sanity
-band. The automated test requires 100-220 runs, 2-10 wickets and 30-65% dot
-balls per innings.
+Bands checked: T20 135-200 runs and 4-8.5 wickets, ODI 200-330 runs and
+5-9.5 wickets, Test run rate 2.5-4.2 and 18-45 runs per wicket, flat > green
+pitch, more spin wickets on dusty than green, strong side wins >= 60%, zero
+scorecard inconsistencies.
 
 ## 4. Determinism (same inputs → same result)
 

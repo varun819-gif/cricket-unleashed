@@ -114,3 +114,13 @@ audio.
 | Node `controller_js` / `online_js` | 6/6, 3/3 |
 | Browser: phone controller / two-phone online / single player | all pass (single player 6/6 repeated runs) |
 
+## Gameplay milestone (2026-11-21)
+
+| Suite | Result |
+|---|---|
+| C++ `cricket_tests` (Debug + sanitizers, Release GCC, Release Clang) | 273/273, 0 warnings |
+| `cricket_calibration` (60 T20 + 16 ODI + 6 Test + 150 pitch + 30 skill matches) | all values inside their bands, 0 scorecard inconsistencies |
+| Scorecard cross-checks over 20 T20 + 10 ODI + 4 Test session matches | 0 problems |
+| Node `controller_js` / `online_js` | 6/6, 3/3 |
+| Browser: phone controller / two-phone online / single player (incl. fielding prompt, step out, scorecard) | all pass |
+
