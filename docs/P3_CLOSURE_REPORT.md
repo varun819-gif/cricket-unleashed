@@ -92,13 +92,13 @@ Follow **ONLINE_SERVER_SETUP.md, section 3** (steps A-E). Short version:
 2. PC: `cloudflared tunnel --url http://localhost:8080` → copy the https address.
 3. Phone 1 (home Wi-Fi) and Phone 2 (**mobile data, Wi-Fi off**): open the
    address in Chrome, play as guest (India / Pakistan).
-4. Phone 1: India, 2 overs, **Create private room**. Phone 2: Pakistan,
+4. Phone 1: India, T20, **Create private room**. Phone 2: Pakistan,
    type the code, **Join**. Phone 1: **Start match**.
 5. In the 2nd over, Phone 2: mobile data off 20 s, then on → must say
    "Reconnecting…" and return to the same ball.
 6. Phone 1: home screen 10 s, then back → must continue.
 7. Finish: both phones show the same result. Check History + Leaderboard.
-8. Both tap **Ranked match** (2 overs), finish, ratings change (+/- same).
+8. Both tap **Ranked match** (T20), finish, ratings change (+/- same).
 9. Send me: both results (screenshots), whether steps 5-6 worked, phone
    models + Android versions + networks, anything odd.
 

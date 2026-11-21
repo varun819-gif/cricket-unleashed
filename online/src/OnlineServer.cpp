@@ -124,6 +124,10 @@ std::optional<MatchRules> OnlineServer::RulesFor(const std::string& f) {
     return std::nullopt;
 }
 
+bool OnlineServer::Offered(const std::string& f) const {
+    return RulesFor(f) && std::find(cfg_.formats.begin(), cfg_.formats.end(), f) != cfg_.formats.end();
+}
+
 std::vector<std::string> OnlineServer::TeamNames() {
     std::vector<std::string> out;
     for (const auto& t : NationalTeams()) out.push_back(t.name);
@@ -310,7 +314,7 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
         Json t = Json::Array();
         for (const auto& n : TeamNames()) t.Push(Json::String(n));
         Json f = Json::Array();
-        for (const char* x : {"overs=2", "overs=5", "overs=10", "t20", "odi"}) f.Push(Json::String(x));
+        for (const auto& x : cfg_.formats) f.Push(Json::String(x));
         Json flags = Obj();  // team -> flag picture (/flags/<code>.svg)
         for (const auto& n : NationalTeamList()) flags.Set(n.name, n.flag);
         return Reply(c, seq, true, "", Obj().Set("teams", t).Set("formats", f).Set("flags", flags));
@@ -363,7 +367,8 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
         // Single player: you against the computer captain (same match engine,
         // no opponent, no matchmaking). Not counted in ratings, stats or leaderboards.
         if (!presence_[me].match.empty()) return Reply(c, seq, false, "finish your match first");
-        const std::string format = j.Str("format", "overs=2"), team = j.Str("team");
+        const std::string format = j.Str("format", "t20"), team = j.Str("team");
+        if (!Offered(format)) return Reply(c, seq, false, "only T20 matches are offered");
         std::string opp = j.Str("opponent");
         const auto teams = TeamNames();
         if (std::find(teams.begin(), teams.end(), team) == teams.end()) return Reply(c, seq, false, "unknown team");
@@ -500,8 +505,8 @@ void OnlineServer::RoomCreate(ConnId c, Conn& k, const Json& j, int64_t now) {
     Presence& p = presence_[k.account];
     if (!p.match.empty()) return Reply(c, seq, false, "finish your match first");
     if (rooms_.size() >= cfg_.maxRooms) return Reply(c, seq, false, "server busy - try again later");
-    const std::string format = j.Str("format", "overs=5"), team = j.Str("team");
-    if (!RulesFor(format)) return Reply(c, seq, false, "unknown format");
+    const std::string format = j.Str("format", "t20"), team = j.Str("team");
+    if (!Offered(format)) return Reply(c, seq, false, "only T20 matches are offered");
     const auto teams = TeamNames();
     if (std::find(teams.begin(), teams.end(), team) == teams.end()) return Reply(c, seq, false, "unknown team");
     RoomLeave(k.account, true);
@@ -599,10 +604,10 @@ void OnlineServer::Enqueue(ConnId c, Conn& k, const Json& j, int64_t now) {
     QueueEntry e;
     e.account = k.account;
     e.mode = j.Str("mode", "casual");
-    e.format = j.Str("format", "overs=5");
+    e.format = j.Str("format", "t20");
     e.team = j.Str("team");
     if (e.mode != "casual" && e.mode != "ranked") return Reply(c, seq, false, "mode must be casual or ranked");
-    if (!RulesFor(e.format)) return Reply(c, seq, false, "unknown format");
+    if (!Offered(e.format)) return Reply(c, seq, false, "only T20 matches are offered");
     const auto teams = TeamNames();
     if (std::find(teams.begin(), teams.end(), e.team) == teams.end()) return Reply(c, seq, false, "unknown team");
     const Account* acc = store_.Find(k.account);

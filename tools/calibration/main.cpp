@@ -5,7 +5,8 @@
 // The bands are wide on purpose: this is a simplified, calibrated model, and
 // the "real" figures are approximate international averages.
 //
-// Usage: cricket_calibration [--quick]
+// Usage: cricket_calibration [--quick] [--all-formats]
+// The game is T20 only; --all-formats also checks the ODI / Test engine.
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -107,25 +108,31 @@ void Report(const char* title, const Stats& s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const bool quick = argc > 1 && std::strcmp(argv[1], "--quick") == 0;
+    bool quick = false, allFormats = false;
+    for (int i = 1; i < argc; ++i) {
+        quick |= std::strcmp(argv[i], "--quick") == 0;
+        allFormats |= std::strcmp(argv[i], "--all-formats") == 0;
+    }
     const int nT20 = quick ? 20 : 60, nOdi = quick ? 6 : 16, nTest = quick ? 2 : 6, nPitch = quick ? 10 : 30;
     auto all = NationalTeams();
     Stats t20, odi, test;
     for (int i = 0; i < nT20; ++i) Play(t20, MatchRules::T20(), all[i % 10], all[(i + 3) % 10], 1000 + i, "standard");
-    for (int i = 0; i < nOdi; ++i) Play(odi, MatchRules::ODI(), all[i % 10], all[(i + 3) % 10], 2000 + i, "standard");
-    for (int i = 0; i < nTest; ++i) Play(test, MatchRules::Test(), all[i % 10], all[(i + 3) % 10], 3000 + i, "standard");
+    for (int i = 0; allFormats && i < nOdi; ++i) Play(odi, MatchRules::ODI(), all[i % 10], all[(i + 3) % 10], 2000 + i, "standard");
+    for (int i = 0; allFormats && i < nTest; ++i) Play(test, MatchRules::Test(), all[i % 10], all[(i + 3) % 10], 3000 + i, "standard");
     Report("T20", t20);
     Band("T20 runs per innings", t20.PerInn(t20.runs), 135, 200);
     Band("T20 wickets per innings", t20.PerInn(t20.wickets), 4.0, 8.5);
     Band("T20 dot-ball %", 100 * t20.dots / t20.balls, 28, 50);
     Band("T20 fours per innings", t20.PerInn(t20.fours), 9, 22);
     Band("T20 sixes per innings", t20.PerInn(t20.sixes), 2.5, 11);
-    Report("ODI", odi);
-    Band("ODI runs per innings", odi.PerInn(odi.runs), 200, 330);
-    Band("ODI wickets per innings", odi.PerInn(odi.wickets), 5, 9.5);
-    Report("Test", test);
-    Band("Test run rate", test.runs / test.balls * 6, 2.5, 4.2);
-    Band("Test runs per wicket", test.runs / test.wickets, 18, 45);
+    if (allFormats) {
+        Report("ODI", odi);
+        Band("ODI runs per innings", odi.PerInn(odi.runs), 200, 330);
+        Band("ODI wickets per innings", odi.PerInn(odi.wickets), 5, 9.5);
+        Report("Test", test);
+        Band("Test run rate", test.runs / test.balls * 6, 2.5, 4.2);
+        Band("Test runs per wicket", test.runs / test.wickets, 18, 45);
+    }
     // Pitches (T20).
     std::printf("Pitches (T20, %d matches each):\n", nPitch);
     double flatRuns = 0, greenRuns = 0, dustySpinShare = 0, greenSpinShare = 0;

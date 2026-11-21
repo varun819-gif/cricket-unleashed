@@ -55,6 +55,11 @@ struct OnlineConfig {
     int maxGuestsPerMinute = 30;          // across the whole server
     size_t maxRooms = 1000;
     size_t maxMatches = 200;
+    // Match formats players may choose. The game offers T20 only; shorter
+    // practice formats ("overs=N") can be switched on for automated tests
+    // (cricket_server --dev-short-matches). ODI / Test exist in the engine but
+    // are not offered.
+    std::vector<std::string> formats = {"t20"};
     int rankedUnlockMatches = 3;          // full matches needed before ranked (slows fake-account farming)
     int maxWrongRoomCodesPerMinute = 10;  // stops guessing room codes
     int64_t leaderboardCacheMs = 15000;
@@ -131,6 +136,8 @@ public:
     // Allowed match formats online: t20, odi, overs=1..50 (Test matches are
     // not offered online yet - see docs).
     static std::optional<MatchRules> RulesFor(const std::string& format);
+    // A format this server offers (see OnlineConfig::formats).
+    bool Offered(const std::string& format) const;
     static std::vector<std::string> TeamNames();
 
 private:

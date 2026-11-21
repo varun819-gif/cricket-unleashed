@@ -140,7 +140,7 @@ function autoPlay(ph, rnd) {
 }
 
 test('end to end: two phones play India vs Pakistan through the real host', { timeout: 120000 }, async (t) => {
-  const host = startHost(['--humans', '2', '--format', 'overs=2', '--seed', '42']);
+  const host = startHost(['--humans', '2', '--dev-format', 'overs=2', '--seed', '42']);
   t.after(() => host.proc.kill());
   const india = makePhone(await host.linkFor('captain', 0), 'India phone');
   const pakistan = makePhone(await host.linkFor('captain', 1), 'Pakistan phone');
@@ -163,7 +163,7 @@ test('end to end: two phones play India vs Pakistan through the real host', { ti
 });
 
 test('end to end: phone reconnects by itself and keeps its place', { timeout: 60000 }, async (t) => {
-  const host = startHost(['--humans', '1', '--format', 'overs=5', '--seed', '9']);
+  const host = startHost(['--humans', '1', '--dev-format', 'overs=5', '--seed', '9']);
   t.after(() => host.proc.kill());
   const phone = makePhone(await host.linkFor('captain', 0), 'Pixel');
   await until(() => phone.client.status === 'connected', 10000, 'pairing');
@@ -183,7 +183,7 @@ test('end to end: phone reconnects by itself and keeps its place', { timeout: 60
 });
 
 test('end to end: a used or wrong QR code is refused', { timeout: 30000 }, async (t) => {
-  const host = startHost(['--humans', '1', '--format', 'overs=1', '--seed', '3']);
+  const host = startHost(['--humans', '1', '--dev-format', 'overs=1', '--seed', '3']);
   t.after(() => host.proc.kill());
   const link = await host.linkFor('captain', 0);
   const first = makePhone(link, 'first');

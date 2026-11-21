@@ -9,8 +9,8 @@ for the real-world test that is still needed.
 1. Open the game website on a phone or PC. Type a player name, pick a
    country, tap **Play as guest**. No email, no password, no Google login.
 2. In the lobby choose a team (India, Pakistan, Australia, England, ... with
-   national flags; players are fictional) and match length (2, 5, 10 overs,
-   T20, ODI).
+   national flags; players are fictional). Every match is a **T20** (the
+   game is T20 only; the server refuses other formats).
 3. Then one of:
    - **Quick match** - any opponent, casual (rating doesn't change).
    - **Ranked match** - an opponent with a similar rating; the result moves

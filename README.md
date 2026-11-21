@@ -7,7 +7,7 @@ private rooms, ranked matchmaking, tournaments and global leaderboards.
 > **Status: cricket rules milestone complete; Priority 2 (mobile controller) complete; next: Priority 3 (online multiplayer backend).** This repository has the
 > **engine-independent gameplay core**: rules, scoring, toss, field
 > restrictions, AI captain, commentary and the server-side match session. It is
-> tested, and it runs full T20, ODI and Test matches in text mode. The Unreal
+> tested, and it runs full T20 matches in text mode (the game is T20 only). The Unreal
 > Engine client has **not** been started yet. See [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md).
 
 ## Why the core comes first
@@ -45,7 +45,7 @@ cmake --build build -j
 
 | Area | Done |
 |---|---|
-| Formats | T20, ODI, Test (5/4/3-day), custom overs |
+| Formats | **T20 only** in the game (project decision 2026-11-21). The rules engine also contains ODI and Test (5/4/3-day) support, kept and tested but not offered |
 | Scoring | runs, boundaries, wides, no-balls (bat runs, byes and leg-byes per Law 21.12), byes, leg-byes, short runs (Law 18.4), penalty runs (Law 41), maidens, milestones |
 | Laws | free hit, which dismissals are allowed on each kind of ball, strike rotation, new batter's end, no bowler bowls two overs in a row, bowler over limits, all out, target, declarations, follow-on (margin by days left), innings wins, ties, draws, new ball after 80 overs |
 | Test sessions | 90-over days, lunch / tea / stumps (tea / dinner day-night), changeovers, early interval near a break, day progression, draw at the last day's stumps; online play pauses at breaks. See [docs/TEST_SESSIONS.md](docs/TEST_SESSIONS.md) |

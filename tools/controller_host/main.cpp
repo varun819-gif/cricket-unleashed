@@ -7,7 +7,8 @@
 // Ball outcomes are simulated (placeholder) until ball physics exists.
 //
 // Usage: cricket_controller_host [--port N] [--bind ADDR] [--host-ip IP]
-//          [--format t20|odi|test|overs=N] [--humans 1|2] [--seed N]
+//          [--humans 1|2] [--seed N]   (matches are T20; --dev-format overs=N|odi|test
+//          is for automated tests and development only)
 //          [--web DIR] [--devices FILE] [--print-links] [--quiet] [--exit-after-ms N]
 //          [--pitch standard|green|dusty|bouncy|flat] [--wind X,Y] [--day-night]
 #include <chrono>
@@ -73,7 +74,14 @@ int main(int argc, char** argv) {
         if (a == "--port") port = std::atoi(next().c_str());
         else if (a == "--bind") bind = next();
         else if (a == "--host-ip") hostIp = next();
-        else if (a == "--format") format = next();
+        else if (a == "--format" || a == "--dev-format") {
+            const bool dev = a == "--dev-format";
+            format = next();
+            if (!dev && format != "t20") {
+                std::cerr << "only T20 matches are offered (use --dev-format for tests)\n";
+                return 2;
+            }
+        }
         else if (a == "--humans") humans = std::atoi(next().c_str());
         else if (a == "--seed") seed = std::strtoull(next().c_str(), nullptr, 10);
         else if (a == "--pitch") pitchName = next();

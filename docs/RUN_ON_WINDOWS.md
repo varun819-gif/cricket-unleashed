@@ -48,7 +48,7 @@ The game server runs on Linux, so on Windows it runs inside **WSL**
 2. Chrome on the laptop: **http://localhost:8080**
 3. Type your name, country India, **Play as guest** (first time only - the
    player is remembered in this browser).
-4. Team **India**, Match **2 overs (quick)**, Computer plays **Pakistan**,
+4. Team **India**, Match **T20 (20 overs)** (the only format), Computer plays **Pakistan**,
    click **Play vs computer**.
 5. Play: toss → choose bat/bowl if you win → pick openers → batting
    (choose direction, click a shot when the ball arrives) / bowling (pick

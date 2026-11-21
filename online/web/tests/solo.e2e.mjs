@@ -23,7 +23,7 @@ const check = (ok, what) => { console.log((ok ? 'PASS ' : 'FAIL ') + what); if (
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-solo-'));
-const server = spawn(serverBin, ['--port', '0', '--bind', '127.0.0.1', '--data', data, '--quiet']);
+const server = spawn(serverBin, ['--port', '0', '--bind', '127.0.0.1', '--data', data, '--quiet', '--dev-short-matches']);
 const port = await new Promise((resolve) => {
   let buf = '';
   server.stdout.on('data', (d) => { buf += d; const m = /LISTENING (\d+)/.exec(buf); if (m) resolve(m[1]); });
@@ -42,7 +42,8 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#opponent option').length > 0);
   await page.selectOption('#team', 'India');
   check(await page.inputValue('#opponent') === 'Pakistan', 'computer plays Pakistan by default');
-  check(await page.inputValue('#format') === 'overs=2', '2 overs selected by default');
+  check(await page.inputValue('#format') === 't20', 'T20 selected by default');
+  await page.selectOption('#format', 'overs=2');  // test-only short match (server started with --dev-short-matches)
   if (shots) await page.screenshot({ path: path.join(shots, 'solo-lobby.png'), fullPage: true });
   // Record every state the page receives (messages change quickly).
   await page.evaluate(() => {

@@ -23,7 +23,7 @@ const root = path.resolve(here, '../../..');
 const serverBin = process.env.CU_SERVER_BIN || path.join(root, 'build/cricket_server');
 
 function startServer(dataDir, extra = []) {
-  const proc = spawn(serverBin, ['--port', '0', '--bind', '127.0.0.1', '--data', dataDir, '--quiet', ...extra]);
+  const proc = spawn(serverBin, ['--port', '0', '--bind', '127.0.0.1', '--data', dataDir, '--quiet', '--dev-short-matches', ...extra]);
   return new Promise((resolve, reject) => {
     let buf = '';
     proc.stdout.on('data', (d) => {

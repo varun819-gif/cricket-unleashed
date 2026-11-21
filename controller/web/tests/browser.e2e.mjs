@@ -23,7 +23,7 @@ const check = (ok, what) => { console.log((ok ? 'PASS ' : 'FAIL ') + what); if (
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const host = spawn(hostBin, ['--port', '0', '--bind', '127.0.0.1', '--host-ip', '127.0.0.1', '--print-links', '--quiet',
-  '--humans', '1', '--format', 'overs=2', '--seed', '11']);
+  '--humans', '1', '--dev-format', 'overs=2', '--seed', '11']);
 const links = [];
 let buf = '';
 host.stdout.on('data', (d) => {

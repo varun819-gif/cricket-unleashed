@@ -2,10 +2,11 @@
 // server-authoritative MatchSession. Every ball is played by the ball physics
 // (BallOutcome); prints ball-by-ball commentary and the full scorecard.
 //
-// Usage: cricket_sim [t20|odi|test|overs=N] [teamA] [teamB] [--hindi] [--seed N] [--quiet]
+// Usage: cricket_sim [t20] [teamA] [teamB] [--hindi] [--seed N] [--quiet]
 //                    [--drs icc|no-reviews|no-tech|custom:<reviews>:<seconds>[:lose][:calls]]
 //                    [--rain]   random rain delays (non-official rain rule for targets)
 //                    [--pitch standard|green|dusty|bouncy|flat] [--wind X,Y] [--day-night]
+//                    [--dev-formats odi|test|overs=N]  (development only; the game is T20)
 // Team numbers 0-9 (see list printed with --teams).
 #include <cstdio>
 #include <cstdlib>
@@ -57,7 +58,7 @@ int main(int argc, char** argv) {
     MatchRules rules = MatchRules::T20();
     int ta = 0, tb = 1, teamArgs = 0;
     uint64_t seed = Toss::SecureSeed();
-    bool hindi = false, quiet = false, rain = false, dayNight = false;
+    bool hindi = false, quiet = false, rain = false, dayNight = false, devFormats = false;
     std::string pitchName = "standard";
     double windX = 0, windY = 0;
     auto teams = NationalTeams();
@@ -65,8 +66,14 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "t20") rules = MatchRules::T20();
-        else if (a == "odi") rules = MatchRules::ODI();
-        else if (a == "test") rules = MatchRules::Test();
+        else if (a == "odi" || a == "test" || a.rfind("overs=", 0) == 0) {
+            // The game is T20 only; other formats stay available to developers.
+            if (!devFormats) {
+                std::cerr << "only T20 is offered (add --dev-formats before it for development)\n";
+                return 2;
+            }
+            rules = a == "odi" ? MatchRules::ODI() : a == "test" ? MatchRules::Test() : MatchRules::Custom(std::atoi(a.c_str() + 6));
+        } else if (a == "--dev-formats") devFormats = true;
         else if (a == "--hindi") hindi = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--rain") rain = true;
@@ -78,8 +85,7 @@ int main(int argc, char** argv) {
         else if (a == "--teams") {
             for (size_t t = 0; t < teams.size(); ++t) std::cout << t << ": " << teams[t].name << "\n";
             return 0;
-        } else if (a.rfind("overs=", 0) == 0) rules = MatchRules::Custom(std::atoi(a.c_str() + 6));
-        else if (std::isdigit(static_cast<unsigned char>(a[0]))) {
+        } else if (std::isdigit(static_cast<unsigned char>(a[0]))) {
             int v = std::atoi(a.c_str()) % static_cast<int>(teams.size());
             (teamArgs++ == 0 ? ta : tb) = v;
         }

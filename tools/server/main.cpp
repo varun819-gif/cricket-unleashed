@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
         else if (a == "--region") cfg.region = next();
         else if (a == "--grace-sec") cfg.graceMs = std::atoll(next().c_str()) * 1000;
         else if (a == "--ranked-unlock") cfg.rankedUnlockMatches = std::atoi(next().c_str());
+        else if (a == "--dev-short-matches") cfg.formats = {"t20", "overs=1", "overs=2", "overs=5"};  // automated tests only
         else if (a == "--max-connections") maxConnections = static_cast<size_t>(std::atoll(next().c_str()));
         else if (a == "--quiet") quiet = true;
         else if (a == "--exit-after-ms") exitAfter = std::atoll(next().c_str());

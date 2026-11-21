@@ -49,6 +49,7 @@ struct World {
         OnlineConfig c;
         c.host.bowlWindowMs = 3000;
         c.rankedUnlockMatches = 0;  // tests that need it turn it on
+        c.formats = {"t20", "overs=1", "overs=2", "overs=3", "overs=5"};  // short matches keep tests fast
         return c;
     }
     void Pump();
@@ -1082,4 +1083,28 @@ TEST(online_single_player_leaving_ends_without_result) {
     me.inbox.clear();
     CHECK(me.Login());
     CHECK(!me.Last("match").has_value());
+}
+
+TEST(online_only_t20_is_offered) {
+    OnlineConfig cfg = World::Cfg();
+    cfg.formats = OnlineConfig{}.formats;  // the real default
+    World w(cfg);
+    Client a(w);
+    a.Guest("Asha");
+    const auto teams = a.Res(a.Req("teams"));
+    CHECK_EQ(teams->Get("formats")->Items().size(), static_cast<size_t>(1));
+    CHECK_EQ(teams->Get("formats")->Items()[0].AsString(), std::string("t20"));
+    for (const char* f : {"odi", "overs=2", "overs=10"}) {
+        CHECK_EQ(a.Err(a.Req("room-create", Json::Object().Set("format", f).Set("team", "India"))),
+                 std::string("only T20 matches are offered"));
+        CHECK(!a.Ok(a.Req("queue", Json::Object().Set("format", f).Set("team", "India"))));
+        CHECK(!a.Ok(a.Req("solo", Json::Object().Set("format", f).Set("team", "India"))));
+    }
+    // No format given: T20.
+    const int64_t r = a.Req("room-create", Json::Object().Set("team", "India"));
+    CHECK(a.Ok(r));
+    CHECK_EQ(a.Last("room")->Str("format"), std::string("t20"));
+    CHECK(a.Ok(a.Req("room-leave")));
+    CHECK(a.Ok(a.Req("solo", Json::Object().Set("team", "India"))));
+    CHECK_EQ(a.Last("match")->Str("format"), std::string("t20"));
 }

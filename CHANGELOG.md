@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.1] - 2026-11-21 - T20 only
+
+### Changed
+- The game offers **T20 only**: lobby, single player, private rooms,
+  matchmaking (server refuses other formats), phone-controller host and
+  `cricket_sim`. ODI / Test remain in the engine (kept and tested) for
+  developers: `--dev-format`, `--dev-formats`, `--dev-short-matches`
+  (automated tests use short matches to stay fast).
+- `cricket_calibration` checks T20 by default (`--all-formats` for ODI/Test).
+- Test: `online_only_t20_is_offered`.
+
 ## [0.12.0] - 2026-11-21 - Complete gameplay physics, scorecards, controller fielding
 
 ### Added

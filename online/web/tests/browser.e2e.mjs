@@ -25,7 +25,7 @@ const check = (ok, what) => { console.log((ok ? 'PASS ' : 'FAIL ') + what); if (
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-online-browser-'));
-const server = spawn(serverBin, ['--port', '0', '--bind', '127.0.0.1', '--data', data, '--quiet']);
+const server = spawn(serverBin, ['--port', '0', '--bind', '127.0.0.1', '--data', data, '--quiet', '--dev-short-matches']);
 const port = await new Promise((resolve) => {
   let buf = '';
   server.stdout.on('data', (d) => { buf += d; const m = /LISTENING (\d+)/.exec(buf); if (m) resolve(m[1]); });

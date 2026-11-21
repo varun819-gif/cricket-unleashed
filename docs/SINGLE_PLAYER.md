@@ -7,6 +7,8 @@ vs computer**. You play one team (for example India); the computer captain
 plays the other (for example Pakistan). No second player, phone, internet
 opponent or matchmaking.
 
+Matches are **T20** (20 overs a side) - the game is T20 only.
+
 ## How it works (reuses the existing engine)
 
 - The server starts a normal match with `MatchHost`, the same game logic

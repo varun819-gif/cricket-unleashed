@@ -102,7 +102,8 @@
     opp.value = savedOpp && r.teams.indexOf(savedOpp) >= 0 ? savedOpp : 'Pakistan';
     if (savedTeam && r.teams.indexOf(savedTeam) >= 0) team.value = savedTeam;
     showTeamFlag();
-    format.value = savedFormat && r.formats.indexOf(savedFormat) >= 0 ? savedFormat : 'overs=2';
+    format.value = savedFormat && r.formats.indexOf(savedFormat) >= 0 ? savedFormat : r.formats[0];
+    format.disabled = r.formats.length < 2;  // T20 only
   }
 
   async function showTab(which) {

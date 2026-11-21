@@ -52,3 +52,4 @@ assumption is easy to change later.
 | 26 | ~~Server hosting~~ | **Decided:** self-hosting at ₹0 for now. Any paid hosting needs the user's explicit approval. |
 | 27 | Afghanistan flag | We show the black-red-green flag the Afghanistan cricket team uses at ICC events. Confirm, or choose to show no flag. |
 | 28 | Admin people | Who will be moderators, and the community rules / appeal email shown to banned players |
+| 29 | ~~Match formats~~ | **Decided 2026-11-21: T20 only.** ODI / Test code stays in the engine (tested, not offered). Short matches only behind developer switches for automated tests |

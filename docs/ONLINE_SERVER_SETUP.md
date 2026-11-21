@@ -66,6 +66,12 @@ Online multiplayer is **not** called complete until this passes.
 - About 20 minutes.
 
 **A. Start**
+
+All matches are T20 (20 overs a side), so one match takes a while. For a
+quicker *connection* check only, a developer switch adds short practice
+matches: start the server with `--dev-short-matches` (2-over matches appear
+in the list). Use plain T20 for the real test.
+
 1. On the PC: `./build/cricket_server --port 8080 --data ~/cu-data --ranked-unlock 1`
    (ranked normally needs 3 full matches; for this test 1 is enough).
 2. On the PC: `cloudflared tunnel --url http://localhost:8080`. Copy the
@@ -78,7 +84,7 @@ Online multiplayer is **not** called complete until this passes.
 5. Phone 2: same. Name `Player Two`, country **Pakistan**.
 
 **C. Private room match (casual)**
-6. Phone 1: Team **India**, Match **2 overs (quick)**, tap **Create
+6. Phone 1: Team **India**, Match **T20** (the only format), tap **Create
    private room**. A 6-letter code appears.
 7. Phone 2: Team **Pakistan**, type the code in **Room code**, tap **Join**.
    Phone 1 now lists both players with flags.
@@ -97,7 +103,7 @@ Online multiplayer is **not** called complete until this passes.
     "Matches" lists both players.
 
 **D. Ranked match**
-14. Both phones: same match length (2 overs), tap **Ranked match**. Within
+14. Both phones: tap **Ranked match**. Within
     a few seconds both are paired.
 15. Finish the match. The winner's rating goes up, the loser's down by the
     same amount (e.g. +20 / -20). **Leaderboard → Rating** shows both.
