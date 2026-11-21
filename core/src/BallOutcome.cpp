@@ -192,6 +192,7 @@ BatChoice BallOutcome::AiShot(const Match& m, const DeliveryPath& path, const De
         }
         a -= 0.05 * std::max(0, inn.Wickets() - 5);
     }
+    if (inn.MaxOvers() == 0 && spec.spinRps > 12) a += 0.12;  // Test batters use their feet to spin
     a = Clamp(a, 0.05, 0.9);
     // What the batter can see early: the length and line.
     const double pitchY = path.pitched ? path.pitchPoint.y : 0.0;
@@ -238,7 +239,8 @@ BatChoice BallOutcome::AiShot(const Match& m, const DeliveryPath& path, const De
             else if (z > 0.8 && x < 0.15) pick("pull", -60);
             else if (x > 0.1) pick("drive", Clamp(30 + 50 * x, 10, 70));  // punch off the back foot
             else pick("flick", -35);
-        } else if (rng_.Uniform() < (inn.MaxOvers() == 0 ? 0.3 : inn.MaxOvers() <= 20 ? 0.8 : 0.6)) {  // push for a single
+        } else if (rng_.Uniform() < (inn.MaxOvers() == 0 ? (spin ? 0.6 : 0.3) : inn.MaxOvers() <= 20 ? 0.8 : 0.6)) {
+            // push for a single (in Tests, working spinners around)
             push();
         } else {
             pick("defend", 0);
@@ -249,7 +251,8 @@ BatChoice BallOutcome::AiShot(const Match& m, const DeliveryPath& path, const De
         return b;
     }
     // Execution: the timing of a real player varies with skill and pace.
-    const double sigma = (86 - 59 * skill) * (0.8 + 0.4 * (spec.speedKph / 150.0));
+    // T20 batters swing harder and take more risk: less precise.
+    const double sigma = (86 - 59 * skill) * (0.8 + 0.4 * (spec.speedKph / 150.0)) * (inn.MaxOvers() > 0 && inn.MaxOvers() <= 20 ? 1.06 : 1.0);
     b.timingMs = rng_.Normal(sigma);
     b.direction += rng_.Normal(6);
     return b;

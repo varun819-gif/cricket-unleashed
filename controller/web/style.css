@@ -112,3 +112,8 @@ select { font: inherit; min-height: 48px; width: 100%; border-radius: 10px; back
 @media (min-width: 700px) and (orientation: landscape) {
   main { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
 }
+table.sc { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+table.sc th, table.sc td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); }
+#cardview h2 { font-size: 15px; margin: 10px 0 4px; }
+#cardview p { font-size: 12px; margin: 4px 0; }
+button.small { min-height: 32px; font-size: 13px; padding: 4px 10px; margin-top: 6px; }

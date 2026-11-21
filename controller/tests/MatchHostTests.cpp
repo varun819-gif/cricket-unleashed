@@ -3,6 +3,7 @@
 // and the (placeholder) way inputs shape outcomes.
 #include "../../core/tests/Test.h"
 #include "PhoneSim.h"
+#include "cricket/Scorecard.h"
 #include "cricket/TeamFactory.h"
 #include "cricket/controller/MatchHost.h"
 
@@ -373,4 +374,61 @@ TEST(ctl_host_physics_matches_look_like_t20_cricket) {
     CHECK_EQ(a->Session().StateFingerprint(), b->Session().StateFingerprint());
     auto [c, tc] = play(322, MatchRules::Custom(3));
     CHECK(a->Session().StateFingerprint() != c->Session().StateFingerprint());
+}
+
+TEST(ctl_host_fielding_prompt_step_out_scorecard_and_conditions) {
+    HostConfig cfg;
+    cfg.human = {true, false};
+    cfg.conditions.pitchName = "dusty";
+    cfg.conditions.pitch = phys::Pitch::Dusty();
+    cfg.conditions.wind = {3, 0, 0};
+    World w(MatchRules::Custom(5), cfg, 9);
+    BotPhone india(w.net, 8);
+    CHECK(india.p.Pair(w.hub.CreatePairing(0, Role::Captain, w.now), w.now));
+    int prompts = 0, catchesTried = 0, throwsChosen = 0, stepOuts = 0;
+    bool sawCard = false, sawConditions = false;
+    for (int i = 0; i < 100000 && w.host.Session().WaitingFor().what != "none"; ++i) {
+        w.Step();
+        india.Read();
+        if (india.state) {
+            const Json& s = *india.state;
+            if (const Json* sc = s.Get("scorecard"); sc && !sc->Items().empty() && sc->Items()[0].Get("batting"))
+                sawCard = true;
+            if (const Json* c = s.Get("conditions"); c && c->Str("pitch") == "dusty" && c->Num("windKph") > 10)
+                sawConditions = true;
+            if (india.Has("fielding") && s.Get("fieldPlay")) {
+                ++prompts;
+                const std::string kind = s.Get("fieldPlay")->Str("kind");
+                CHECK(kind == "catch" || kind == "stop");
+                if (prompts % 2) {
+                    india.Do(Json::Object().Set("do", "fielding").Set("act", "throw-keeper"), w.now);
+                    ++throwsChosen;
+                }
+                india.Do(Json::Object().Set("do", "fielding").Set("act", kind == "catch" ? "catch" : "dive").Set("timing", 20),
+                         w.now);
+                ++catchesTried;
+                india.lastActed.clear();
+                continue;
+            }
+            if (india.Has("bat") && stepOuts < 3 && w.host.Session().HasMatch() &&
+                BallOutcome::IsSpinner(w.host.Session().GetMatch())) {
+                india.Do(Json::Object().Set("do", "bat").Set("shot", "loft").Set("dir", 0).Set("timing", 0).Set("advance", true),
+                         w.now);
+                ++stepOuts;
+                w.Step();
+                if (const BallReport* b = w.host.LastBall()) CHECK(b->summary.find("down the pitch") != std::string::npos);
+                continue;
+            }
+        }
+        india.Play(w.now);
+    }
+    CHECK(w.host.Session().GetMatch().Phase() == MatchPhase::Complete);
+    CHECK(prompts >= 1);       // the ball went to our fielders and the phone was asked
+    CHECK(catchesTried >= 1);
+    CHECK(throwsChosen >= 1);
+    CHECK(sawCard);
+    CHECK(sawConditions);
+    CHECK_EQ(india.rejected, 0);
+    for (const auto& e : india.errors) std::cerr << "  rejected: " << e << "\n";
+    CHECK_OK(CheckScorecard(w.host.Session().GetMatch()));
 }

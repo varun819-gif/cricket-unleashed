@@ -1,6 +1,7 @@
 #include "cricket/online/OnlineServer.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -369,7 +370,10 @@ void OnlineServer::OnRequest(ConnId c, Conn& k, const Json& j, int64_t now) {
         if (opp.empty()) opp = team == "Pakistan" ? "India" : "Pakistan";
         if (std::find(teams.begin(), teams.end(), opp) == teams.end()) return Reply(c, seq, false, "unknown opponent");
         if (opp == team) return Reply(c, seq, false, "pick a different team for the computer");
-        Status st = StartMatch("solo", format, {me, ""}, {team, opp}, now);
+        const std::string pitch = j.Str("pitch", "random");
+        static const std::set<std::string> pitches = {"random", "standard", "green", "dusty", "bouncy", "flat"};
+        if (!pitches.count(pitch)) return Reply(c, seq, false, "unknown pitch");
+        Status st = StartMatch("solo", format, {me, ""}, {team, opp}, now, pitch);
         return Reply(c, seq, st.ok, st.error);
     }
     if (kind == "queue-cancel") {
@@ -414,6 +418,7 @@ void OnlineServer::AttachMatch(const std::string& account, OnlineMatch& m) {
     Json j = Obj();
     j.Set("k", "match").Set("id", m.id).Set("mode", m.mode).Set("format", m.format).Set("side", side);
     j.Set("role", "captain").Set("last", m.lastActionId[side]);
+    j.Set("pitch", m.conditions.pitchName).Set("dayNight", m.conditions.dayNight);
     Json teams = Json::Array();
     for (int s = 0; s < 2; ++s) {
         const Account* a = store_.Find(m.players[s]);
@@ -669,12 +674,36 @@ void OnlineServer::WriteMeta(const OnlineMatch& m) {
     j.Set("p0", m.players[0]).Set("p1", m.players[1]).Set("t0", m.teamNames[0]).Set("t1", m.teamNames[1]);
     j.Set("ai0", m.aiTakeover[0]).Set("ai1", m.aiTakeover[1]);
     j.Set("seed", static_cast<double>(m.host->Session().Seed()));
+    j.Set("pitch", m.conditions.pitchName).Set("cracks", ctl::ToHex(std::string(reinterpret_cast<const char*>(&m.conditions.pitch.cracks), 8)));
+    j.Set("windX", m.conditions.wind.x).Set("windY", m.conditions.wind.y).Set("dayNight", m.conditions.dayNight);
     SaveFileAtomic(LiveDir() + "/" + m.id + ".meta", j.Dump());
+}
+
+Conditions OnlineServer::MakeConditions(const std::string& format, const std::string& pitchName) {
+    auto u = [&] {
+        uint64_t x = 0;
+        for (unsigned char ch : rnd_(8)) x = (x << 8) | ch;
+        return static_cast<double>(x >> 11) * (1.0 / 9007199254740992.0);
+    };
+    static const char* kPitches[] = {"standard", "standard", "green", "dusty", "bouncy", "flat"};
+    Conditions c;
+    std::string name = pitchName;
+    const double pick = u();
+    if (name.empty() || name == "random") name = kPitches[static_cast<int>(pick * 6) % 6];
+    c.pitchName = name;
+    c.pitch = phys::Pitch::ByName(name);
+    uint64_t cracks = 0;
+    for (unsigned char ch : rnd_(8)) cracks = (cracks << 8) | ch;
+    c.pitch.cracks = cracks | 1;
+    const double speed = u() * 5.0, angle = u() * 2 * phys::kPi;  // a breeze, 0-18 km/h
+    c.wind = {speed * phys::DetCos(angle), speed * phys::DetSin(angle), 0};
+    c.dayNight = format != "test" && u() < 0.4;
+    return c;
 }
 
 Status OnlineServer::StartMatch(const std::string& mode, const std::string& format,
                                 std::array<std::string, 2> accounts, std::array<std::string, 2> teamNames,
-                                int64_t now) {
+                                int64_t now, const std::string& pitchChoice) {
     if (matches_.size() >= cfg_.maxMatches) return Status::Err("server full - try again soon");
     auto rules = RulesFor(format);
     if (!rules) return Status::Err("unknown format");
@@ -703,6 +732,8 @@ Status OnlineServer::StartMatch(const std::string& mode, const std::string& form
     uint64_t seed = 0;
     for (unsigned char ch : rnd_(8)) seed = (seed << 8) | ch;
     h.seed = seed | 1;
+    m->conditions = MakeConditions(format, pitchChoice);
+    h.conditions = m->conditions;
     m->host = std::make_unique<ctl::MatchHost>(std::move(*rules), std::move(teams), *m, h);
     if (!LiveDir().empty()) {
         std::error_code ec;
@@ -845,6 +876,22 @@ size_t OnlineServer::RecoverLiveMatches(int64_t now) {
         ctl::HostConfig h = cfg_.host;
         h.seed = load.session->Seed();
         h.human = {!m->aiTakeover[0], !m->aiTakeover[1]};
+        // The same venue as before the restart.
+        m->conditions.pitchName = meta->Str("pitch", "standard");
+        m->conditions.pitch = phys::Pitch::ByName(m->conditions.pitchName);
+        {
+            const std::string hex = meta->Str("cracks");
+            uint64_t cracks = 1;
+            if (hex.size() == 16) {
+                std::string raw;
+                for (size_t i = 0; i < 16; i += 2) raw += static_cast<char>(std::stoi(hex.substr(i, 2), nullptr, 16));
+                std::memcpy(&cracks, raw.data(), 8);
+            }
+            m->conditions.pitch.cracks = cracks;
+        }
+        m->conditions.wind = {meta->Num("windX"), meta->Num("windY"), 0};
+        m->conditions.dayNight = meta->Flag("dayNight");
+        h.conditions = m->conditions;
         uint64_t salt = 0;
         for (unsigned char ch : rnd_(8)) salt = (salt << 8) | ch;
         m->host = std::make_unique<ctl::MatchHost>(std::move(load.session), *m, h, salt);

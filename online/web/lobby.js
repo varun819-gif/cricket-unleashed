@@ -178,7 +178,7 @@
   $('opponent').addEventListener('change', () => { if (store) store.setItem('cu.opponent', $('opponent').value); showTeamFlag(); });
   $('solo').addEventListener('click', () => {
     if ($('opponent').value === $('team').value) return toast('Pick a different team for the computer');
-    req('solo', { team: $('team').value, opponent: $('opponent').value, format: $('format').value });
+    req('solo', { team: $('team').value, opponent: $('opponent').value, format: $('format').value, pitch: $('pitch').value });
   });
   $('quick').addEventListener('click', () => req('queue', Object.assign({ mode: 'casual' }, choice())));
   $('ranked').addEventListener('click', () => req('queue', Object.assign({ mode: 'ranked' }, choice())));

@@ -31,6 +31,9 @@
 
   let state = null;
   let ball = null;                 // {arriveAt, variation}
+  let fieldBall = null;            // {arriveAt, flight, kind, fielder}: the ball on its way to our fielder
+  let stepOut = false;             // batter dances down the pitch for the next shot
+  let showCard = false;            // scorecard open
   const bowlChoice = { variation: 'stock', line: 0, length: 0.5, effort: 75 };
   let batDir = 0;
   let openerPicks = [];
@@ -67,6 +70,13 @@
     if (type === 'ball') {
       ball = { arriveAt: performance.now() + data.arriveInMs, variation: data.variation, flight: data.arriveInMs };
       buzz(40);
+      render();
+      return;
+    }
+    if (type === 'field') {
+      fieldBall = { arriveAt: performance.now() + data.arriveInMs, flight: data.arriveInMs, kind: data.kind, fielder: data.fielder };
+      buzz([20, 30, 20]);
+      lastSignature = '';
       render();
       return;
     }
@@ -107,7 +117,11 @@
 
   function renderScore() {
     if (!state) return;
-    $('teams').textContent = (state.teams || []).join(' vs ');
+    const cond = state.conditions;
+    $('teams').textContent = (state.teams || []).join(' vs ') + (cond ? ' · ' + cond.pitch + ' pitch' +
+      (cond.wear > 0.05 ? ' (wear ' + Math.round(cond.wear * 100) + '%)' : '') +
+      (cond.windKph >= 1 ? ' · wind ' + cond.windKph + ' km/h' : '') + (cond.dew ? ' · dew' : '') : '');
+    renderCard();
     const s = state.score;
     if (!s) {
       $('total').textContent = state.toss === 'call' ? 'Toss' : 'Toss decision';
@@ -209,9 +223,7 @@
 
     if (has('bowl')) parts.push(bowlCard());
     if (has('bat') || (ball && state.stage === 'ball' && client.side === state.score?.batting)) parts.push(batCard());
-    if (has('fielding')) parts.push(card('Fielders', el('div', { class: 'grid3' },
-      ['dive-left', 'catch', 'dive-right', 'throw-keeper', 'throw-bowler'].map((a) =>
-        el('button', { class: 'chip', text: a.replace('-', ' '), onclick: () => send({ do: 'fielding', act: a }) })))));
+    if (has('fielding')) parts.push(fieldCard());
 
     if (has('field') || has('new-ball') || has('declare')) {
       const sel = el('select', { 'aria-label': 'Field preset' }, (opts.fieldPresets || []).map((p) => el('option', { value: p, text: p })));
@@ -265,6 +277,64 @@
         line: Number(bowlChoice.line.toFixed(2)), length: Number(bowlChoice.length.toFixed(2)), effort: bowlChoice.effort }) }));
   }
 
+  // The ball is on its way to one of our fielders: tap CATCH / DIVE as it
+  // arrives (good timing makes it easier), and choose where to throw.
+  function fieldCard() {
+    const play = state.fieldPlay || {};
+    const fb = fieldBall;
+    const bar = el('div');
+    const animate = () => {
+      if (!fb || !bar.isConnected) return;
+      const p = 1 - (fb.arriveAt - performance.now()) / fb.flight;
+      bar.style.width = Math.max(0, Math.min(1, p)) * 100 + '%';
+      if (p < 1.6) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+    const act = (a) => () => {
+      const timing = fb ? Math.round(performance.now() - fb.arriveAt) : 0;
+      send({ do: 'fielding', act: a, timing });
+      if (a === 'catch' || a === 'dive') fieldBall = null;
+    };
+    const kind = play.kind || (fb && fb.kind) || 'stop';
+    return card((kind === 'catch' ? 'Catch it! ' : 'Stop it! ') + (play.fielder || ''),
+      el('div', { class: 'incoming' }, bar),
+      el('button', { class: 'big', text: kind === 'catch' ? 'CATCH' : 'DIVE', onclick: act(kind === 'catch' ? 'catch' : 'dive') }),
+      el('div', { class: 'grid2' },
+        el('button', { class: 'chip', text: 'Throw: keeper end', onclick: act('throw-keeper') }),
+        el('button', { class: 'chip', text: 'Throw: bowler end', onclick: act('throw-bowler') })));
+  }
+
+  // Full scorecard (batting, bowling, extras, fall of wickets, partnerships).
+  function renderCard() {
+    let box = $('cardview');
+    if (!box) {
+      box = el('section', { id: 'cardview', class: 'card', hidden: '' });
+      $('score').after(box);
+      const btn = el('button', { id: 'cardbtn', class: 'ghost small', text: 'Scorecard', onclick: () => { showCard = !showCard; renderCard(); } });
+      $('score').append(btn);
+    }
+    box.hidden = !showCard;
+    $('cardbtn').textContent = showCard ? 'Hide scorecard' : 'Scorecard';
+    if (!showCard || !state || !state.scorecard) return;
+    const table = (head, rows) => {
+      const t = el('table', { class: 'sc' });
+      const tr = el('tr'); head.forEach((h) => tr.append(el('th', { text: h }))); t.append(tr);
+      rows.forEach((r) => { const x = el('tr'); r.forEach((c) => x.append(el('td', { text: String(c) }))); t.append(x); });
+      return t;
+    };
+    const kids = [];
+    state.scorecard.forEach((c) => {
+      kids.push(el('h2', { text: c.team + ' ' + c.total + '/' + c.wickets + ' (' + c.overs + ' ov, RR ' + c.rr + ')' }));
+      kids.push(table(['Batter', '', 'R', 'B', '4s', '6s', 'SR'], c.batting.map((b) => [b.name, b.how, b.r, b.b, b['4s'], b['6s'], b.sr])));
+      const e = c.extras;
+      kids.push(el('p', { text: 'Extras ' + e.total + ' (w ' + e.w + ', nb ' + e.nb + ', b ' + e.b + ', lb ' + e.lb + (e.pen ? ', pen ' + e.pen : '') + ')' }));
+      kids.push(table(['Bowler', 'O', 'M', 'R', 'W', 'Econ'], c.bowling.map((b) => [b.name, b.o, b.m, b.r, b.w, b.econ])));
+      if (c.fow.length) kids.push(el('p', { text: 'Fall of wickets: ' + c.fow.map((f) => f.n + '-' + f.score + ' (' + f.name + ', ' + f.over + ')').join(', ') }));
+      if (c.partnerships.length) kids.push(el('p', { text: 'Partnerships: ' + c.partnerships.map((p) => p.runs + ' (' + p.balls + ')' + (p.unbroken ? '*' : '')).join(', ') }));
+    });
+    box.replaceChildren(...kids);
+  }
+
   function batCard() {
     const bar = el('div');
     const incoming = el('div', { class: 'incoming' }, bar);
@@ -282,8 +352,9 @@
     pad.addEventListener('pointermove', (e) => { if (e.buttons) aim(e); });
     const shot = (s) => () => {
       const timing = ball ? Math.round(performance.now() - ball.arriveAt) : 0;
-      send({ do: 'bat', shot: s, dir: batDir, timing });
+      send({ do: 'bat', shot: s, dir: batDir, timing, advance: stepOut && s !== 'leave' });
       ball = null;
+      stepOut = false;
     };
     const animate = () => {
       if (!ball || !bar.isConnected) return;
@@ -296,7 +367,10 @@
       el('div', { class: 'grid3' }, ['defend', 'drive', 'cut', 'pull', 'flick', 'sweep'].map((s) =>
         el('button', { class: s === 'defend' ? 'secondary' : '', text: s, onclick: shot(s) }))),
       el('div', { class: 'grid2' }, el('button', { text: 'LOFT', onclick: shot('loft') }),
-        el('button', { class: 'ghost', text: 'Leave', onclick: shot('leave') })));
+        el('button', { class: 'ghost', text: 'Leave', onclick: shot('leave') })),
+      el('button', { class: 'chip' + (stepOut ? ' on' : ''), text: stepOut ? 'Stepping out ✓' : 'Step out (dance down the pitch)',
+        onclick: (e) => { stepOut = !stepOut; e.currentTarget.classList.toggle('on', stepOut);
+          e.currentTarget.textContent = stepOut ? 'Stepping out ✓' : 'Step out (dance down the pitch)'; } }));
   }
 
   // ---------------------------------------------------------------- start

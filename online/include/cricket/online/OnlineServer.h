@@ -80,6 +80,7 @@ public:
     std::string id, mode, format;
     std::array<std::string, 2> players;   // account ids
     std::array<std::string, 2> teamNames;
+    Conditions conditions;                // pitch, wind, day-night for this match
     int64_t startedMs = 0;
     std::array<int64_t, 2> lastActionId{0, 0};
     std::array<int64_t, 2> goneSince{-1, -1};  // disconnected at (-1 = connected)
@@ -185,7 +186,10 @@ private:
     std::string NewMatchId(int64_t now);
 
     Status StartMatch(const std::string& mode, const std::string& format, std::array<std::string, 2> accounts,
-                      std::array<std::string, 2> teams, int64_t now);
+                      std::array<std::string, 2> teams, int64_t now, const std::string& pitch = "");
+    // A venue for a new match: the pitch (or a random one), a breeze, and
+    // day-night for some limited-overs games. Same server seed = same venues.
+    Conditions MakeConditions(const std::string& format, const std::string& pitch);
     void AttachMatch(const std::string& account, OnlineMatch& m);
     void RunMatch(OnlineMatch& m, int64_t now);
     void AbandonSide(OnlineMatch& m, int side, const std::string& why, int64_t now);

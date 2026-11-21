@@ -71,6 +71,10 @@ add_executable(cricket_controller_host tools/controller_host/main.cpp)
 target_link_libraries(cricket_controller_host PRIVATE cricket_controller)
 target_compile_definitions(cricket_controller_host PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
+# Plays many matches with the ball physics and checks realism bands.
+add_executable(cricket_calibration tools/calibration/main.cpp)
+target_link_libraries(cricket_calibration PRIVATE cricket_core)
+
 # Text-mode match simulator / demo.
 add_executable(cricket_sim tools/sim/main.cpp)
 target_link_libraries(cricket_sim PRIVATE cricket_core)
@@ -113,6 +117,12 @@ target_link_libraries(cricket_tests PRIVATE cricket_core cricket_controller cric
 # Lets tests read source files (information-hiding scan of the AI code).
 target_compile_definitions(cricket_tests PRIVATE CRICKET_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 add_test(NAME cricket_tests COMMAND cricket_tests)
+
+# Realism bands over many full matches (slow with sanitizers: Release only).
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_test(NAME calibration COMMAND cricket_calibration --quick)
+  set_tests_properties(calibration PROPERTIES TIMEOUT 900)
+endif()
 
 # Phone-side tests (JavaScript protocol + end-to-end against the real host).
 find_program(NODE_EXE node)

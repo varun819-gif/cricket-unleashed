@@ -43,6 +43,7 @@ struct BatInput {
     int direction = 0;            // degrees, 0 = straight, + off side, - leg side
     int timingMs = 0;             // tap time minus ball arrival as the phone saw it
     bool provided = false;
+    bool advance = false;         // stepped down the pitch
 };
 
 struct HostConfig {
@@ -55,7 +56,16 @@ struct HostConfig {
     // for network round trips in the batting window.
     bool serverTimingCheck = false;
     int64_t timingToleranceMs = 150;
+    // Venue: pitch, wind, day-night (dew).
+    Conditions conditions;
+    // Fielding from the phone: when the ball goes to a fielder, the fielding
+    // side gets a "catch it / stop it" prompt and can choose the throw end.
+    bool fieldingControls = true;
+    int64_t fieldWindowMs = 900;  // extra time after the ball reaches the fielder
 };
+
+// The full scorecard as JSON (phone / browser / online).
+Json ScorecardJson(const Match& m);
 
 class MatchHost {
 public:
@@ -95,6 +105,7 @@ private:
     void AdvanceDelivery(int64_t now);
     void ReleaseBall(int64_t now);
     void ResolveBall(int64_t now);
+    void FinishBall(int64_t now);
     void PublishStates(int64_t now);
     bool SideConnected(int side) const;
     static std::string PlayerId(int side) { return "side-" + std::to_string(side); }
@@ -108,9 +119,16 @@ private:
     std::optional<BallReport> lastBall_;
     phys::DeliverySpec spec_;
     phys::DeliveryPath path_;  // the ball in the air now
+    BatChoice pendingBat_;     // the shot, while the fielders react
+    FieldingChoice fielding_;
+    std::string fieldKind_;    // "catch" / "stop" during the fielding stage
+    std::string fieldName_;
+    int64_t fieldArriveAt_ = 0, fieldRealMs_ = 0, fieldPresentMs_ = 0;
+    mutable uint64_t cardKey_ = UINT64_MAX;  // scorecard cache
+    mutable Json cardJson_;
     int64_t realFlightMs_ = 0;
     std::array<uint64_t, 2> seq_{0, 0};
-    // Delivery stages: "" (none), "bowl", "ball".
+    // Delivery stages: "" (none), "bowl", "ball", "field".
     std::string stage_;
     int64_t deadline_ = 0, arriveAt_ = 0;
     int64_t pausedAt_ = 0;

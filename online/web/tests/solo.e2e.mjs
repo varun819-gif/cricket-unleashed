@@ -48,7 +48,12 @@ try {
   await page.evaluate(() => {
     window.__msgs = [];
     window.CUOnlineClient.listen((t, d) => {
-      if (t === 'state') window.__msgs.push((d.message || '') + ' | ' + (d.lastBall ? d.lastBall.summary : ''));
+      if (t === 'state') {
+        window.__msgs.push((d.message || '') + ' | ' + (d.lastBall ? d.lastBall.summary : ''));
+        if (d.scorecard) window.__card = d.scorecard;
+        if (d.conditions) window.__cond = d.conditions;
+        if (d.fieldPlay) window.__fieldPlays = (window.__fieldPlays || 0) + 1;
+      }
     });
   });
   await page.click('#solo');
@@ -59,7 +64,7 @@ try {
   const seen = new Set();
   const scores = new Set();
   const messages = new Set();
-  let shotBowl = false, shotBat = false;
+  let shotBowl = false, shotBat = false, shotField = false, steppedOut = false, fielded = 0;
   const click = async (sel) => {
     const el = page.locator(sel).first();
     // Short timeout: if the screen just changed, the loop simply tries again.
@@ -89,8 +94,15 @@ try {
       await click('button:text("BOWL")');
     } else if (c.includes('bat')) {
       if (shots && !shotBat) { await page.screenshot({ path: path.join(shots, 'solo-batting.png') }); shotBat = true; }
+      if (!steppedOut && await click('button:text("Step out")')) steppedOut = true;
       await sleep(1000);  // wait for the ball to arrive
       await click('button:text("drive")');
+    } else if (c.includes('fielding')) {
+      if (shots && !shotField) { await page.screenshot({ path: path.join(shots, 'solo-fielding.png') }); shotField = true; }
+      fielded++;
+      await click('button:text("Throw: keeper end")');
+      await sleep(500);  // let the ball reach the fielder
+      await click('.card button.big');
     }
     await sleep(80);
   }
@@ -104,11 +116,26 @@ try {
   check(seen.has('bat'), 'I batted (the computer bowled)');
   check([...scores].some((s) => /^India \d+\/\d+ \(\d\.\d\)$/.test(s)) && [...scores].some((s) => /^Pakistan \d+\/\d+ \(\d\.\d\)$/.test(s)),
     'live scoreboard showed runs/wickets (overs) for both teams');
+  // Whether the computer hits the ball to our fielders in 2 overs depends on
+  // the match; when it does, the prompt must appear and work.
+  const plays = await page.evaluate(() => window.__fieldPlays || 0);
+  check(plays === 0 || fielded >= 1, 'fielding prompt shown and used when the ball came to a fielder (' + fielded + ' of ' + plays + ' states)');
+  check(steppedOut, 'stepped down the pitch with the Step out button');
+  check(msgs.some((m) => /down the pitch/.test(m)), 'the physics played the shot down the pitch');
+  const cond = await page.evaluate(() => window.__cond);
+  check(cond && /^(standard|green|dusty|bouncy|flat)$/.test(cond.pitch), 'match conditions sent (pitch ' + (cond && cond.pitch) + ')');
+  // Scorecard during / after the match.
   await page.waitForSelector('#endCard', { state: 'visible', timeout: 5000 });
   const result = await page.textContent('#endText');
   check(/won by|tied/i.test(result), 'result shown: ' + result);
   check((await page.textContent('#endRating')).includes('Single player'), 'marked as single player (no rating change)');
   if (shots) await page.screenshot({ path: path.join(shots, 'solo-result.png'), fullPage: true });
+  // The scorecard of the match just played (from the last match state).
+  const card = await page.evaluate(() => window.__card);
+  check(Array.isArray(card) && card.length === 2 && card[0].batting.length > 0 && card[0].bowling.length > 0,
+    'scorecard data: batting, bowling for both innings');
+  check(card && card.every((c) => c.batting.reduce((a, b) => a + b.r, 0) + c.extras.total === c.total),
+    'scorecard adds up (batters + extras = total)');
   await page.click('#endOk');
   await page.click('#tabHistory');
   await page.waitForFunction(() => document.querySelector('#tabBody').textContent.includes('vs computer'));

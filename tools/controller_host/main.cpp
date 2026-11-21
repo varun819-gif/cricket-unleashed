@@ -9,7 +9,9 @@
 // Usage: cricket_controller_host [--port N] [--bind ADDR] [--host-ip IP]
 //          [--format t20|odi|test|overs=N] [--humans 1|2] [--seed N]
 //          [--web DIR] [--devices FILE] [--print-links] [--quiet] [--exit-after-ms N]
+//          [--pitch standard|green|dusty|bouncy|flat] [--wind X,Y] [--day-night]
 #include <chrono>
+#include <cstdio>
 #include <csignal>
 #include <cstdlib>
 #include <fstream>
@@ -58,6 +60,9 @@ struct Slot {
 int main(int argc, char** argv) {
     int port = 47321, humans = 1;
     std::string bind = "0.0.0.0", hostIp, web = std::string(CRICKET_SOURCE_DIR) + "/controller/web", devicesFile;
+    std::string pitchName = "standard";
+    double windX = 0, windY = 0;
+    bool dayNight = false;
     std::string format = "t20";
     uint64_t seed = static_cast<uint64_t>(NowMs());
     bool printLinks = false, quiet = false;
@@ -71,6 +76,9 @@ int main(int argc, char** argv) {
         else if (a == "--format") format = next();
         else if (a == "--humans") humans = std::atoi(next().c_str());
         else if (a == "--seed") seed = std::strtoull(next().c_str(), nullptr, 10);
+        else if (a == "--pitch") pitchName = next();
+        else if (a == "--wind") std::sscanf(next().c_str(), "%lf,%lf", &windX, &windY);
+        else if (a == "--day-night") dayNight = true;
         else if (a == "--web") web = next();
         else if (a == "--devices") devicesFile = next();
         else if (a == "--print-links") printLinks = true;
@@ -95,6 +103,11 @@ int main(int argc, char** argv) {
         if (!ss.str().empty() && !hub.ImportDevices(ss.str())) std::cerr << "ignoring damaged device file\n";
     }
     HostConfig cfg;
+    cfg.conditions.pitchName = pitchName;
+    cfg.conditions.pitch = phys::Pitch::ByName(pitchName);
+    cfg.conditions.pitch.cracks = seed | 1;
+    cfg.conditions.wind = {windX, windY, 0};
+    cfg.conditions.dayNight = dayNight;
     cfg.human = {true, humans >= 2};
     cfg.seed = seed;
     MatchHost host(rules, {all[0], all[1]}, hub, cfg);

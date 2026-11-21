@@ -414,7 +414,7 @@ ShotShape ShapeOf(Shot s) {
     switch (s) {
         case Shot::Defend: return {true, false, -0.35, 0.45, 0.0, 1.25, 1.5, -10, -75, 75};
         case Shot::Drive: return {true, false, -0.25, 0.90, 0.0, 0.95, 21, -2, -35, 70};
-        case Shot::Loft: return {true, false, -0.30, 0.80, 0.0, 1.10, 27, 25, -60, 60};
+        case Shot::Loft: return {true, false, -0.30, 0.80, 0.0, 1.10, 28.5, 25, -60, 60};
         case Shot::Cut: return {false, true, 0.25, 1.40, 0.35, 1.30, 19, 2, 50, 125};
         case Shot::Pull: return {false, true, -0.60, 0.55, 0.75, 1.75, 22, 14, -125, -25};
         case Shot::Flick: return {true, false, -0.75, 0.20, 0.0, 0.95, 16, 1, -100, -10};
@@ -521,7 +521,8 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
     }
     // Good batters also read the bowler's hand and the seam / revolutions,
     // so they anticipate part of the movement they can't see yet.
-    const double anticipation = 0.35 + 0.45 * skill;
+    // Spin is read partly from the hand and the flight (slower ball, more time).
+    const double anticipation = std::min(0.95, 0.35 + 0.45 * skill + (spec.spinRps > 12 ? 0.05 : 0.0));
     predicted = predicted + (at->p - predicted) * anticipation;
     r.readError = Length(V3{at->p.x - predicted.x, 0, at->p.z - predicted.z});
     // Where the bat goes: the read, limited to what this shot can reach.
@@ -532,7 +533,7 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
     const double padX = shape.frontFoot ? Clamp(predicted.x - 0.26, -0.45, 0.35) : Clamp(predicted.x - 0.15, -0.30, 0.30);
     // A defensive block (little backlift, soft hands, bat close to the pad)
     // is much less sensitive to timing than a full swing or a push into a gap.
-    const double t = in.shot != Shot::Defend ? in.timingMs : in.timingMs * (Abs(in.direction) <= 10 ? 0.5 : 0.75);
+    const double t = in.shot != Shot::Defend ? in.timingMs : in.timingMs * (Abs(in.direction) <= 10 ? 0.7 : 0.9);
     if (Abs(t) > 150) return missed(padY, padX);  // far too early / late: the bat is elsewhere
     // Offsets of the ball from the planned contact point.
     double dw = shape.horizontalBat ? at->p.z - bat.z : at->p.x - bat.x;   // across the blade
@@ -740,7 +741,9 @@ FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& fiel
         r.stopPoint = s.p;
         r.path.resize(i + 1);
     };
-    bool inAir = true;
+    // A ball hit down into the ground from below waist height can't be caught
+    // before it lands (a "bump ball").
+    bool inAir = !(velocity.z < -0.5 && start.z < 1.0);
     std::vector<char> beaten(field.size(), 0);  // fielders the ball has already gone past
     for (size_t i = 0; i < r.path.size(); ++i) {
         const Sample& s = r.path[i];
