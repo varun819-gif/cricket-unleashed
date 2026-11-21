@@ -58,6 +58,12 @@ public:
     // ball physics will replace it. Returns nullopt when there is nothing to
     // appeal (the delivery is then bowled normally).
     std::optional<DecisionCase> MakeCase(const Match& m, const Delivery& d);
+    // Fills in what each side's players believe about a case built from real
+    // evidence (e.g. ball tracking from the physics). Perception model only.
+    void PerceiveCase(DecisionCase& c, int battingSide) {
+        battingSide_ = battingSide;
+        Perceive(c);
+    }
 
 private:
     LbwEvidence RandomLbw();

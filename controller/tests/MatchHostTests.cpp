@@ -290,34 +290,87 @@ TEST(ctl_host_rejects_bad_inputs_and_applies_field_changes) {
     CHECK_EQ(w.host.Stage(), std::string("bowl"));  // the bad delivery wasn't bowled
 }
 
-TEST(ctl_host_placeholder_outcomes_follow_inputs) {
-    // Statistical check of the PLACEHOLDER resolver (not physics).
+TEST(ctl_host_physics_outcomes_follow_inputs) {
+    // Same deliveries, different shots: the physics decides (no dice).
     Match m(MatchRules::T20(), TwoTeams(), 0);
     m.SetOpeners(0, 1);
-    m.SetBowler(10);
-    QuickSim sim(3);
-    std::mt19937_64 rng(4);
-    BowlInput bowl;
-    int leaveRuns = 0, leaveCaught = 0, defendBoundaries = 0, goodBoundaries = 0, badBoundaries = 0, goodCaught = 0,
-        badCaught = 0;
-    for (int i = 0; i < 4000; ++i) {
-        BatInput leave{"leave", 0, 0, true}, defend{"defend", 0, 0, true};
-        BatInput good{"drive", 20, 10, true}, bad{"drive", 20, 400, true};
-        Delivery d = MatchHost::ResolveWithInputs(m, sim, bowl, leave, rng);
-        if (d.extra == ExtraType::None) leaveRuns += d.runs;
-        leaveCaught += d.dismissal == Dismissal::Caught;
-        d = MatchHost::ResolveWithInputs(m, sim, bowl, defend, rng);
-        defendBoundaries += d.boundary && d.extra == ExtraType::None;
-        d = MatchHost::ResolveWithInputs(m, sim, bowl, good, rng);
-        goodBoundaries += d.boundary;
-        goodCaught += d.dismissal == Dismissal::Caught;
-        d = MatchHost::ResolveWithInputs(m, sim, bowl, bad, rng);
-        badBoundaries += d.boundary;
-        badCaught += d.dismissal == Dismissal::Caught;
+    m.SetBowler(8);  // a pace bowler
+    const FieldSetup field = FieldSetup::FromPreset(FieldPreset::Balanced);
+    int leaveRuns = 0, leaveCaught = 0, defendBoundaries = 0, goodRuns = 0, badRuns = 0, goodBoundaries = 0,
+        badBoundaries = 0, goodMiddled = 0, badMiddled = 0;
+    BallOutcome bowler(4);
+    for (int i = 0; i < 300; ++i) {
+        const phys::DeliverySpec spec = bowler.SpecFor(m, bowler.AiBowl(m));
+        BallOutcome o(9);  // physics only: ResolveSpec uses no randomness
+        const double dir = -20 + (i % 9) * 10;  // around the ground
+        BatChoice leave, defend{"defend", 0, 0, true}, good{"drive", dir, 5, true}, bad{"drive", dir, 110, true};
+        BallReport r = o.ResolveSpec(m, field, spec, leave, nullptr);
+        if (r.delivery.extra == ExtraType::None) leaveRuns += r.delivery.runs;
+        leaveCaught += r.delivery.dismissal == Dismissal::Caught;
+        r = o.ResolveSpec(m, field, spec, defend, nullptr);
+        defendBoundaries += r.delivery.boundary && r.delivery.extra == ExtraType::None;
+        r = o.ResolveSpec(m, field, spec, good, nullptr);
+        goodRuns += r.delivery.runs;
+        goodBoundaries += r.delivery.boundary;
+        goodMiddled += r.bat.contact == phys::Contact::Middled;
+        r = o.ResolveSpec(m, field, spec, bad, nullptr);
+        badRuns += r.delivery.runs;
+        badBoundaries += r.delivery.boundary;
+        badMiddled += r.bat.contact == phys::Contact::Middled;
     }
     CHECK_EQ(leaveRuns, 0);
     CHECK_EQ(leaveCaught, 0);
     CHECK_EQ(defendBoundaries, 0);
-    CHECK(goodBoundaries > badBoundaries * 2);
-    CHECK(badCaught > goodCaught);
+    CHECK(goodRuns > badRuns);
+    CHECK(goodBoundaries > badBoundaries);
+    CHECK(goodMiddled > badMiddled);
+}
+
+TEST(ctl_host_physics_matches_look_like_t20_cricket) {
+    // Computer v computer T20s played entirely by the physics: totals,
+    // wickets and dot balls must land in a realistic band, and the same
+    // seed must give the same match.
+    auto play = [](uint64_t seed, MatchRules rules) {
+        ControllerHub hub({}, Counter(seed));
+        HostConfig cfg;
+        cfg.human = {false, false};
+        cfg.seed = seed;
+        auto all = NationalTeams();
+        auto host = std::make_unique<MatchHost>(std::move(rules), std::array<Team, 2>{all[seed % 10], all[(seed + 1) % 10]},
+                                                hub, cfg);
+        int64_t now = 0;
+        for (int i = 0; i < 100000; ++i) {
+            if (host->Session().HasMatch() && host->Session().GetMatch().Result().kind != MatchResult::Kind::None) break;
+            host->Process(now += 50);
+        }
+        return std::make_pair(std::move(host), now);
+    };
+    double runs = 0, wickets = 0, balls = 0, dots = 0, boundaries = 0;
+    int innings = 0;
+    for (uint64_t seed = 200; seed < 204; ++seed) {
+        auto [host, t] = play(seed, MatchRules::T20());
+        const Match& m = host->Session().GetMatch();
+        CHECK(m.Result().kind != MatchResult::Kind::None);
+        for (const auto& inn : m.AllInnings()) {
+            ++innings;
+            runs += inn.Total();
+            wickets += inn.Wickets();
+            balls += inn.LegalBalls();
+            for (const auto& b : inn.Balls()) {
+                dots += b.legal && b.runsToTeam == 0 && b.delivery.dismissal == Dismissal::None;
+                boundaries += b.delivery.boundary;
+            }
+        }
+    }
+    const double perInnings = runs / innings;
+    CHECK(perInnings > 100 && perInnings < 220);
+    CHECK(wickets / innings > 2.0 && wickets / innings <= 10);
+    CHECK(dots / balls > 0.30 && dots / balls < 0.65);
+    CHECK(boundaries / innings > 8);
+    // Replays: same seed, same match (ball for ball).
+    auto [a, ta] = play(321, MatchRules::Custom(3));
+    auto [b, tb] = play(321, MatchRules::Custom(3));
+    CHECK_EQ(a->Session().StateFingerprint(), b->Session().StateFingerprint());
+    auto [c, tc] = play(322, MatchRules::Custom(3));
+    CHECK(a->Session().StateFingerprint() != c->Session().StateFingerprint());
 }

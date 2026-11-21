@@ -59,6 +59,7 @@
     if (type === 'state') {
       const first = !state;
       state = data;
+      state.receivedAt = performance.now();
       if (first) showStatus({ status: client.status });  // header can now show the team name
       render();
       return;
@@ -124,12 +125,23 @@
       $('bowler').textContent = state.bowler ? 'Bowling: ' + state.bowler.name + ' ' + state.bowler.overs + '.' + state.bowler.balls +
         '-' + state.bowler.runs + '-' + state.bowler.wickets : '';
     }
-    $('message').textContent = state.result || state.message || '';
+    // Last ball as the physics played it: speed, length, swing / turn, shot.
+    $('message').textContent = (state.result || state.message || '') + (state.lastBall ? '\n' + state.lastBall.summary : '');
   }
 
   function card(title, ...kids) { return el('div', { class: 'card' }, title ? el('h2', { text: title }) : null, ...kids); }
 
-  function countdown(ms) { return el('div', { class: 'countdown', text: Math.ceil(Math.max(0, ms) / 1000) + 's' }); }
+  // Countdowns tick locally between server updates; only their text changes
+  // (rebuilding the buttons every tick would swallow taps).
+  function msLeft(key) {
+    const v = state && state[key];
+    return v == null ? null : v - (performance.now() - (state.receivedAt || performance.now()));
+  }
+  function countdownText(key) { return Math.ceil(Math.max(0, msLeft(key) || 0) / 1000) + 's'; }
+  function countdown(key) { return el('div', { class: 'countdown', 'data-key': key, text: countdownText(key) }); }
+  function tickCountdowns() {
+    document.querySelectorAll('.countdown[data-key]').forEach((n) => { n.textContent = countdownText(n.getAttribute('data-key')); });
+  }
 
   function render() {
     renderScore();
@@ -137,8 +149,7 @@
     if (!state || client.status !== 'connected') { panel.replaceChildren(); return; }
     const signature = JSON.stringify([state.controls, state.options, state.waiting, state.stage, state.bowler && state.bowler.id,
       state.result, state.waitingForController, !!ball]);
-    const urgent = state.reviewMsLeft != null || state.stageMsLeft != null;
-    if (signature === lastSignature && !urgent) return;
+    if (signature === lastSignature) { tickCountdowns(); return; }
     const controlsKey = JSON.stringify(state.controls);
     if (controlsKey !== lastControls && state.controls.length) buzz(25);  // your turn
     lastControls = controlsKey;
@@ -185,7 +196,7 @@
       parts.push(card('Who bowls this over?', list));
     }
     if (has('review')) {
-      parts.push(card('Review the decision?', state.reviewMsLeft >= 0 ? countdown(state.reviewMsLeft) : null,
+      parts.push(card('Review the decision?', state.reviewMsLeft >= 0 ? countdown('reviewMsLeft') : null,
         el('div', { class: 'grid2' },
           el('button', { text: 'REVIEW', onclick: () => send({ do: 'review' }) }),
           el('button', { class: 'secondary', text: 'Accept', onclick: () => send({ do: 'accept' }) }))));
@@ -248,7 +259,7 @@
     });
     const effort = el('input', { type: 'range', min: '40', max: '100', value: String(bowlChoice.effort), 'aria-label': 'Effort' });
     effort.addEventListener('input', () => { bowlChoice.effort = Number(effort.value); });
-    return card('Your delivery', state.stageMsLeft != null ? countdown(state.stageMsLeft) : null, chips, pitch,
+    return card('Your delivery', state.stageMsLeft != null ? countdown('stageMsLeft') : null, chips, pitch,
       el('label', { text: 'Effort (more pace, less control)' }), effort,
       el('button', { class: 'big', text: 'BOWL', onclick: () => send({ do: 'bowl', variation: bowlChoice.variation,
         line: Number(bowlChoice.line.toFixed(2)), length: Number(bowlChoice.length.toFixed(2)), effort: bowlChoice.effort }) }));
@@ -296,7 +307,7 @@
   });
   $('forget').addEventListener('click', () => { client.stop(); client.forget(); showStatus({ status: 'unpaired' }); });
   setInterval(() => { if (client.status === 'connected') client.ping(); }, 5000);
-  setInterval(() => { if (state && (state.reviewMsLeft != null || state.stageMsLeft != null)) render(); }, 250);
+  setInterval(() => { if (state && (state.reviewMsLeft != null || state.stageMsLeft != null)) tickCountdowns(); }, 250);
 
   const pairing = P.parsePairing(location.hash);
   if (pairing) history.replaceState(null, '', location.pathname);  // don't leave the secret in the address bar

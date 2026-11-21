@@ -588,7 +588,11 @@ TEST(online_reconnect_resumes_and_duplicate_actions_ignored) {
     CHECK(w.server.MatchOf(rm.b.id) != nullptr);
     if (!w.server.MatchOf(rm.b.id)) return;
     // A's internet drops.
-    const auto inputsBefore = w.server.MatchOf(rm.b.id)->host->Session().Inputs().size();
+    auto ballsBowled = [&] {
+        const auto& ses = w.server.MatchOf(rm.b.id)->host->Session();
+        return ses.HasMatch() ? ses.GetMatch().Current().Balls().size() : size_t{0};
+    };
+    const auto ballsBefore = ballsBowled();
     rm.a.Drop();
     w.Step(100);
     CHECK(rm.b.Last("notice")->Str("text").find("disconnected") != std::string::npos);
@@ -597,7 +601,7 @@ TEST(online_reconnect_resumes_and_duplicate_actions_ignored) {
         w.Step(100);
     }
     CHECK_EQ(rm.b.Last("state")->Int("waitingForController"), 0);  // the match waits for A
-    CHECK_EQ(w.server.MatchOf(rm.b.id)->host->Session().Inputs().size(), inputsBefore);
+    CHECK_EQ(ballsBowled(), ballsBefore);  // no balls bowled while A is away
     // A comes back within the grace period.
     rm.a.inbox.clear();
     CHECK(rm.a.Login());

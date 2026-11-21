@@ -23,7 +23,7 @@ MatchHost::MatchHost(MatchRules rules, std::array<Team, 2> teams, ControlChannel
       cfg_(cfg),
       session_(std::make_unique<MatchSession>(std::move(rules), std::move(teams), cfg.seed)),
       sim_(cfg.seed * 31 + 7),
-      rng_(cfg.seed * 17 + 3) {
+      outcome_(cfg.seed * 17 + 3) {
     for (int s = 0; s < 2; ++s)
         if (cfg_.human[s]) session_->Join(PlayerId(s), s);
     session_->RunAi();  // an AI side may need to call the toss
@@ -34,7 +34,7 @@ MatchHost::MatchHost(std::unique_ptr<MatchSession> recovered, ControlChannel& hu
       cfg_(cfg),
       session_(std::move(recovered)),
       sim_(cfg.seed * 31 + 7 + resumeSalt),
-      rng_(cfg.seed * 17 + 3 + resumeSalt) {
+      outcome_(cfg.seed * 17 + 3 + resumeSalt) {
     // Continue the command numbers after those already in the journal.
     for (const auto& in : session_->Inputs())
         if (in.type == InputType::Submit || in.type == InputType::SubmitAt)
@@ -85,7 +85,8 @@ std::vector<std::string> MatchHost::AllowedControls(int side, Role role) const {
         if (p.what == "batter") out.push_back("batter");
         if (p.what == "bowler") out.push_back("bowler");
         if (p.what == "review") {
-            out.push_back("review");
+            // Only offer a review the side still has.
+            if (session_->HasMatch() && session_->GetMatch().ReviewsRemaining(side) > 0) out.push_back("review");
             out.push_back("accept");
         }
         if (p.what == "follow-on") out.push_back("follow-on");
@@ -190,6 +191,17 @@ Status MatchHost::Apply(const ControllerAction& act, int64_t now) {
 
 void MatchHost::ReleaseBall(int64_t now) {
     stage_ = "ball";
+    {
+        const Match& m = session_->GetMatch();
+        BowlChoice c;
+        c.variation = bowl_.variation;
+        c.line = bowl_.line;
+        c.length = bowl_.length;
+        c.effort = bowl_.effort;
+        spec_ = outcome_.SpecFor(m, c);
+        path_ = phys::SimulateDelivery(spec_, outcome_.pitch, outcome_.env);
+        realFlightMs_ = static_cast<int64_t>(path_.timeAtCrease * 1000);
+    }
     arriveAt_ = now + cfg_.ballFlightMs;
     // Online, the batter's tap needs a round trip to reach us: allow for it.
     int64_t latency = 0;
@@ -206,73 +218,25 @@ void MatchHost::ReleaseBall(int64_t now) {
     hub_.Broadcast(session_->GetMatch().BattingSide(), ev);
 }
 
-Delivery MatchHost::ResolveWithInputs(const Match& m, QuickSim& sim, const BowlInput& bowl, const BatInput& bat,
-                                      std::mt19937_64& rng) {
-    // PLACEHOLDER outcome model. Start from the statistical simulation, then
-    // let the players' choices push it around in believable directions.
-    Delivery d = sim.Next(m);
-    std::uniform_real_distribution<double> u(0.0, 1.0);
-    if (d.extra == ExtraType::Wide || d.extra == ExtraType::NoBall) return d;
-    // A wildly inaccurate delivery is called wide.
-    if (std::fabs(bowl.line) > 0.9 && bowl.effort > 85 && u(rng) < 0.5) {
-        Delivery w;
-        w.extra = ExtraType::Wide;
-        return w;
-    }
-    const bool freeHit = m.Current().NextBallIsFreeHit();
-    const double quality = bat.provided ? std::clamp(1.0 - std::abs(bat.timingMs) / 250.0, 0.0, 1.0) : 0.0;
-    const bool out = d.dismissal != Dismissal::None;
-    auto noRuns = [&] {
-        d.runs = 0;
-        d.boundary = false;
-        d.shortRuns = 0;
-    };
-    if (!bat.provided || bat.shot == "leave") {
-        // No shot: only bowled / LBW can get you; no runs off the bat.
-        if (out && d.dismissal != Dismissal::Bowled && d.dismissal != Dismissal::Lbw) d.dismissal = Dismissal::None;
-        if (d.extra == ExtraType::None) noRuns();
-        return d;
-    }
-    if (bat.shot == "defend") {
-        if (d.dismissal == Dismissal::Caught && u(rng) < 0.6) d.dismissal = Dismissal::None;
-        if (d.dismissal == Dismissal::None && d.extra == ExtraType::None) {
-            d.runs = std::min(d.runs, 1);
-            d.boundary = false;
-        }
-        return d;
-    }
-    // Attacking shots: timing decides.
-    if (!out && d.extra == ExtraType::None) {
-        if (quality > 0.8 && u(rng) < 0.35) {
-            if (d.boundary && d.runs == 4 && bat.shot == "loft") d.runs = 6;
-            else if (!d.boundary && d.runs <= 2) {
-                d.runs = 4;
-                d.boundary = true;
-            }
-        } else if (quality < 0.3 && !freeHit && u(rng) < (bat.shot == "loft" ? 0.15 : 0.07)) {
-            noRuns();
-            d.dismissal = Dismissal::Caught;  // mistimed: in the air
-        } else if (quality < 0.3) {
-            if (d.boundary) {
-                d.boundary = false;
-                d.runs = 1;
-            }
-        }
-    }
-    if (bowl.variation == "yorker" && bowl.length < 0.15 && d.boundary && u(rng) < 0.4) {
-        d.boundary = false;
-        d.runs = 1;
-    }
-    return d;
-}
-
 void MatchHost::ResolveBall(int64_t now) {
     if (stage_ != "ball") return;
     const Match& m = session_->GetMatch();
-    Delivery d = ResolveWithInputs(m, sim_, bowl_, bat_, rng_);
+    BatChoice bat;
+    if (!cfg_.human[m.BattingSide()]) {
+        bat = outcome_.AiShot(m, path_, spec_);
+    } else if (bat_.provided) {
+        bat.provided = bat_.shot != "leave";
+        bat.shot = bat_.shot;
+        bat.direction = bat_.direction;
+        // The phone shows the ball over `ballFlightMs` (slowed down so people
+        // can react); its timing error is scaled to the real flight time.
+        const double scale = cfg_.ballFlightMs > 0 ? static_cast<double>(realFlightMs_) / cfg_.ballFlightMs : 1.0;
+        bat.timingMs = bat_.timingMs * scale;
+    }
+    BallReport rep = outcome_.ResolveSpec(m, session_->Field(m.FieldingSide()), spec_, bat, &sim_, &path_);
     stage_.clear();
-    auto c = sim_.MakeCase(m, d);
-    if (!c || !session_->ResolveAppeal(*c)) session_->ResolveDelivery(d);
+    if (!rep.appeal || !session_->ResolveAppeal(*rep.appeal)) session_->ResolveDelivery(rep.delivery);
+    lastBall_ = std::move(rep);
     (void)now;
 }
 
@@ -288,11 +252,14 @@ void MatchHost::AdvanceDelivery(int64_t now) {
             stage_ = "bowl";
             deadline_ = now + cfg_.bowlWindowMs;
         } else {
-            // AI bowler: a sensible stock delivery with a little variety.
-            std::uniform_real_distribution<double> u(0.0, 1.0);
+            // Computer bowler: chooses like a captain would (swing with the new
+            // ball, yorkers at the death, spinners flight it).
+            const BowlChoice c = outcome_.AiBowl(m);
             bowl_ = {};
-            bowl_.line = (u(rng_) - 0.6) * 0.4;
-            bowl_.length = 0.3 + u(rng_) * 0.4;
+            bowl_.variation = c.variation;
+            bowl_.line = c.line;
+            bowl_.length = c.length;
+            bowl_.effort = c.effort;
             ReleaseBall(now);
             if (!cfg_.human[batting]) ResolveBall(now);
         }
@@ -333,8 +300,17 @@ void MatchHost::Process(int64_t now) {
         }
         AdvanceDelivery(now);
     }
+    // What just happened. Several events can happen in one step (e.g. the
+    // computer calls the toss, wins it and chooses): show up to three, so
+    // nothing important flashes past unseen.
+    std::vector<std::string> fresh;
     for (const auto& e : session_->EventsSince(lastEvent_))
-        if (e.kind != "join") message_ = e.text;  // the latest thing that happened
+        if (e.kind != "join") fresh.push_back(e.text);
+    if (!fresh.empty()) {
+        message_.clear();
+        for (size_t i = fresh.size() > 3 ? fresh.size() - 3 : 0; i < fresh.size(); ++i)
+            message_ += (message_.empty() ? "" : "\n") + fresh[i];
+    }
     lastEvent_ = session_->LastEventId();
     PublishStates(now);
 }
@@ -346,7 +322,16 @@ Json MatchHost::ViewFor(int side, Role role, int64_t now) const {
     v.Set("waiting", p.what).Set("waitingSide", p.side);
     v.Set("yourSide", side).Set("role", ToString(role));
     v.Set("stage", stage_);
-    v.Set("placeholderOutcomes", true);  // ball outcomes are simulated until physics exists
+    v.Set("physics", true);  // every ball is played out by the ball physics
+    if (lastBall_) {
+        const BallReport& b = *lastBall_;
+        Json lb = Json::Object();
+        lb.Set("summary", b.summary).Set("speedKph", b.spec.speedKph).Set("contact", phys::ToString(b.bat.contact));
+        lb.Set("pitched", b.path.pitched).Set("pitchLength", b.path.pitchPoint.y);
+        lb.Set("swingCm", b.path.swingBeforePitch * 100).Set("deviationCm", b.path.deviationOffPitch * 100);
+        lb.Set("exitKph", b.bat.exitSpeedKph).Set("distance", b.field.distance);
+        v.Set("lastBall", lb);
+    }
     v.Set("waitingForController", WaitingForController());
     v.Set("message", message_);
     Json controls = Json::Array();

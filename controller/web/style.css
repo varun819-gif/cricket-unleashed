@@ -43,7 +43,7 @@ body {
 #total { font-size: 26px; font-weight: 800; letter-spacing: .3px; }
 #chase, #batters, #bowler { font-size: 15px; color: var(--muted); }
 #batters b, #bowler b { color: var(--text); }
-#message { margin-top: 6px; font-size: 14px; min-height: 1.3em; }
+#message { margin-top: 6px; font-size: 14px; min-height: 1.3em; white-space: pre-line; }
 .free-hit { color: var(--accent); font-weight: 700; }
 
 main { display: flex; flex-direction: column; gap: 12px; }

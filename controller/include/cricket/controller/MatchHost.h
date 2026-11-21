@@ -11,10 +11,10 @@
 //  * If every phone of a human side drops out, that side's timers pause
 //    until a phone reconnects.
 //
-// PLACEHOLDER: there is no ball physics yet. The outcome of each ball comes
-// from the statistical QuickSim, nudged by the shot, timing and delivery the
-// players chose (see ResolveWithInputs). Unreal ball physics will replace
-// this; the controls and protocol stay the same.
+// Each ball is played out by the ball physics (BallOutcome / BallPhysics):
+// the delivery the bowler chose flies, swings, bounces and spins; the shot
+// the batter chose meets it (or misses); the fielders chase the result. The
+// computer plays its side's bowling and batting through the same physics.
 #pragma once
 
 #include <array>
@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "cricket/AutoCaptain.h"
+#include "cricket/BallOutcome.h"
 #include "cricket/MatchSession.h"
 #include "cricket/controller/ControllerHub.h"
 
@@ -82,9 +83,10 @@ public:
     // Hub events (paired, connected, lost...) seen during the last Process.
     const std::vector<HubEvent>& RecentHubEvents() const { return recentEvents_; }
 
-    // PLACEHOLDER resolver (exposed for tests).
-    static Delivery ResolveWithInputs(const Match& m, QuickSim& sim, const BowlInput& bowl, const BatInput& bat,
-                                      std::mt19937_64& rng);
+    // The physics report of the last ball (null before the first ball).
+    const BallReport* LastBall() const { return lastBall_ ? &*lastBall_ : nullptr; }
+    // Real (physics) flight time of the ball in the air now, in ms.
+    int64_t RealFlightMs() const { return realFlightMs_; }
 
 private:
     Status Apply(const ControllerAction& a, int64_t now);
@@ -101,8 +103,12 @@ private:
     HostConfig cfg_;
     std::unique_ptr<MatchSession> session_;
     int timingCorrections_ = 0;
-    QuickSim sim_;
-    std::mt19937_64 rng_;
+    QuickSim sim_;          // players' perception on appeals only (never outcomes)
+    BallOutcome outcome_;   // the physics
+    std::optional<BallReport> lastBall_;
+    phys::DeliverySpec spec_;
+    phys::DeliveryPath path_;  // the ball in the air now
+    int64_t realFlightMs_ = 0;
     std::array<uint64_t, 2> seq_{0, 0};
     // Delivery stages: "" (none), "bowl", "ball".
     std::string stage_;

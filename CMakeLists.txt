@@ -29,8 +29,15 @@ add_library(cricket_core
   core/src/MatchSession.cpp
   core/src/TeamFactory.cpp
   core/src/SaveGame.cpp
+  core/src/BallPhysics.cpp
+  core/src/BallOutcome.cpp
 )
 target_include_directories(cricket_core PUBLIC core/include)
+# Ball physics must give bit-identical results on every machine (offline game
+# and online server): no fused multiply-add contraction.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(cricket_core PRIVATE -ffp-contract=off)
+endif()
 
 # Phone controller: pairing, secure local link, controls -> game.
 add_library(cricket_controller
@@ -93,6 +100,7 @@ add_executable(cricket_tests
   core/tests/RainTests.cpp
   core/tests/SaveTests.cpp
   core/tests/IntegrationTests.cpp
+  core/tests/PhysicsTests.cpp
   controller/tests/ControllerUtilTests.cpp
   controller/tests/ControllerHubTests.cpp
   controller/tests/MatchHostTests.cpp
