@@ -102,6 +102,7 @@ add_executable(cricket_tests
   core/tests/SaveTests.cpp
   core/tests/IntegrationTests.cpp
   core/tests/PhysicsTests.cpp
+  core/tests/GameplayTests.cpp
   controller/tests/ControllerUtilTests.cpp
   controller/tests/ControllerHubTests.cpp
   controller/tests/MatchHostTests.cpp

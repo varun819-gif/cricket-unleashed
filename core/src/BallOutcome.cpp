@@ -142,7 +142,7 @@ DeliverySpec BallOutcome::SpecFor(const Match& m, const BowlChoice& c) {
     s.targetLine = line * away;
     s.seamNip = rng_.Uniform() * 2 - 1;  // which way the seam bites on landing
     // Where the front foot lands: effort and tiredness push it over the line.
-    s.overstep = rng_.Normal(0.035) + (-0.12 + 0.08 * effort - 0.04 * skill);
+    s.overstep = rng_.Normal(0.035) + (-0.10 + 0.08 * effort - 0.04 * skill);
     return s;
 }
 
@@ -533,7 +533,9 @@ BallReport BallOutcome::ResolveSpec(const Match& m, const FieldSetup& field, con
         Delivery legBye;
         if (e.shotOffered) {
             const V3 vin = r.bat.velocityAtPad;
-            const V3 out{vin.x * 0.35 + (r.bat.padImpact.x < 0 ? -2.0 : 1.2), -vin.y * 0.15, 0.3};
+            // Off the pads the ball usually glances away behind square on the leg side.
+            const double sp = Length(vin);
+            const V3 out{-flip * sp * 0.30 + vin.x * 0.2, vin.y * 0.35, 0.3};
             r.field = PlayOutField(r.bat.padImpact, out, fm.fielders, ground, env, false, fc.assist);
             if (r.field.boundary) {
                 legBye.extra = ExtraType::LegBye;

@@ -434,7 +434,8 @@ std::optional<Sample> At(const std::vector<Sample>& s, double planeY) {
 std::optional<Sample> PadHit(const DeliveryPath& path, double padY, double padX) {
     auto at = CrossingAt(path, padY);
     if (!at) return std::nullopt;
-    if (Abs(at->p.x - padX) <= 0.13 + kBallRadius && at->p.z - kBallRadius <= 0.62) return at;
+    // Both legs (front and back pad) and the thigh: about 40 cm wide, up to ~1.1 m.
+    if (Abs(at->p.x - padX) <= 0.20 + kBallRadius && at->p.z - kBallRadius <= 1.10) return at;
     return std::nullopt;
 }
 
@@ -480,7 +481,7 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
         r.contact = path.wouldHitStumps ? Contact::Bowled : Contact::Missed;
         return finish();
     };
-    if (in.shot == Shot::Leave) return missed(0.85, -0.10);
+    if (in.shot == Shot::Leave) return missed(0.85, -0.15);
 
     ShotShape shape = ShapeOf(in.shot);
     if (in.shot == Shot::Defend && !fullish) {  // back-foot defence to a shorter ball
@@ -496,7 +497,7 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
         r.regainGroundS = in.advance ? 1.3 : (contactY >= 2.35 ? 0.35 : 0.0);
     }
     auto at = CrossingAt(path, contactY);
-    if (!at) return missed(0.85, -0.10);
+    if (!at) return missed(0.85, -0.15);
     r.contactY = contactY;
     r.ballAtContact = at->p;
     // The batter's read: from the ball's state `readLead` seconds earlier,
@@ -527,7 +528,8 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
     const V3 bat{Clamp(predicted.x, shape.xMin, shape.xMax), contactY, Clamp(predicted.z, shape.zMin, shape.zMax)};
     // Pads for a missed shot: the front pad follows the line of the ball.
     const double padY = shape.frontFoot ? contactY - 0.30 : 0.55;
-    const double padX = shape.frontFoot ? Clamp(predicted.x - 0.20, -0.35, 0.40) : Clamp(predicted.x - 0.15, -0.30, 0.30);
+    // The front pad is inside the line of the bat (leg side); the back leg is behind.
+    const double padX = shape.frontFoot ? Clamp(predicted.x - 0.26, -0.45, 0.35) : Clamp(predicted.x - 0.15, -0.30, 0.30);
     // A defensive block (little backlift, soft hands, bat close to the pad)
     // is much less sensitive to timing than a full swing or a push into a gap.
     const double t = in.shot != Shot::Defend ? in.timingMs : in.timingMs * (Abs(in.direction) <= 10 ? 0.5 : 0.75);
@@ -797,7 +799,7 @@ FieldResult PlayOutField(V3 start, V3 velocity, const std::vector<Fielder>& fiel
                 return r;
             }
             r.caught = true;
-            r.boundaryCatch = nearRope;
+            r.boundaryCatch = beyond || dc > rope - 3.0;  // taken on the boundary
             r.catchHeight = s.p.z;
             r.boundary = false;
             r.runs = 0;
