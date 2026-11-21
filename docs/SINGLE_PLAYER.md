@@ -18,12 +18,12 @@ opponent or matchmaking.
 - The **AI captain** (`AutoCaptain`, already used for AI sides) does the
   computer's toss call/choice, batting order, bowling changes, field
   settings, reviews, and plays its deliveries and shots.
-- **Fielding and wicketkeeping**: field placement is set by the captains;
-  catches, run-outs and stumpings come out of the ball-outcome model.
-  ⚠️ That model is still the **simulated placeholder** (`QuickSim`, nudged
-  by your shot, timing and delivery choice) until the ball physics model
-  exists (UNREAL_DEVELOPMENT_PLAN.md, U1). There are no animated fielders
-  or keeper yet.
+- **Every ball is played by the ball physics** (BALL_PHYSICS.md): your
+  delivery or shot, the computer's delivery or shot, the swing, bounce and
+  spin, the bat impact, and then the 9 fielders, wicketkeeper and bowler
+  chasing, catching or stopping the ball. Runs come from how far and where
+  the ball goes and how fast the fielders get there. There are no animated
+  fielders or keeper yet (that is the 3D work).
 
 ## What you control
 

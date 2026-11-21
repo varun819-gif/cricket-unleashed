@@ -15,16 +15,14 @@ Tests: `core/tests/DrsTests.cpp`, `DrsConfigTests.cpp`, `NoBallTests.cpp`.
 > ("the ball pitched in line", "there was an edge"), apply the cricket rules
 > correctly. The evidence itself is **made up by a placeholder**:
 >
-> - `QuickSim::MakeCase` (in `AutoCaptain.cpp`) rolls dice to decide whether
->   there was an edge, where the ball pitched, whether it would hit the
->   stumps, whether the batter made their ground, and whether it was a
->   no-ball. These are **random numbers with rough probabilities**. They are
->   not measurements of anything.
-> - Later, the game's own ball physics (Unreal, server-side) will compute the
->   evidence from the simulated ball's real path in the game world. Even then
->   it will be the game's **own** in-game tracking, not a real-world DRS
->   product, and the screens will not use real DRS brand names unless
->   licensed (see ASSET_REGISTER.md).
+> - **Update (ball physics milestone):** in every played match the evidence
+>   now comes from the game's **own** ball physics (BALL_PHYSICS.md): where
+>   the ball pitched, where it hit the pad and where it would have gone
+>   (in-game ball tracking), and whether the bat touched it. It is still not
+>   a real-world DRS product, and screens will not use real DRS brand names
+>   unless licensed (see ASSET_REGISTER.md).
+> - `QuickSim::MakeCase` (in `AutoCaptain.cpp`), which rolls dice, is now
+>   used only by the text simulator `cricket_sim`.
 >
 > So the DRS **rules** are tested and reliable. The DRS **evidence** is a
 > stand-in until the physics exists.

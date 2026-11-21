@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.11.0] - 2026-11-21 - Real cricket ball physics
+
+### Added
+- `BallPhysics` (core): deterministic ball flight with drag, swing
+  (conventional and reverse), Magnus drift, bounce with friction, seam
+  movement, spin turn; five pitch types; batter read/anticipation model;
+  bat impact with timing, edges; pads and in-game ball tracking; outfield
+  roll; fielders (catches, drops, ground stops, throws) and running.
+- `BallOutcome` (core): bowler and batter choices -> physics -> scored ball
+  (wides, no-balls, LBW and caught-behind appeals with physics evidence).
+  Computer bowler and batter models (seeded, platform-independent RNG).
+- `MatchHost` resolves every ball with the physics (offline, phone, online
+  server). The phone/browser shows each ball's speed, length, movement and
+  shot result.
+- Tests: 19 physics tests + match calibration test (261 C++ tests total).
+  Golden path fingerprints identical on GCC/Clang, debug/release.
+
+### Changed
+- The old placeholder resolver (statistical dice nudged by inputs) is gone
+  from played matches; `QuickSim` remains only in the text simulator.
+- Fixed: "review" button offered with no reviews left; toss result could
+  flash past unseen; countdown re-rendered buttons 4x a second (lost taps).
+- Build: core compiled with `-ffp-contract=off` for bit-identical physics.
+
 ## [0.10.0] - 2026-11-20 - Single player vs computer
 
 ### Added

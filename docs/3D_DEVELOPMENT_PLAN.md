@@ -42,7 +42,7 @@ checked on every build).
 
 1. **Get a capable development PC** (Option A below, your approval needed).
    Until then, use **no paid cloud** by default.
-2. **Now, on any machine (₹0):** build the **ball physics model** in our
+2. ✅ **Done (2026-11-21, see BALL_PHYSICS.md):** the **ball physics model** in our
    C++ core: delivery speed, drag, swing, seam, spin, bounce, pitch
    friction, bat contact. It is deterministic and tested without graphics,
    and the online server can use the same model to keep results fair.

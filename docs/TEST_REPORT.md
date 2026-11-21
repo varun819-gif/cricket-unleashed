@@ -103,3 +103,14 @@ audio.
 | Browser: local phone controller (Pixel 7 emulation) | 13/13 (+1 optional QR-scan check) |
 | Browser: two-phone online match + report + admin ban (Pixel 7 emulation) | 23/23 |
 | **Two real devices over the internet** | **not done yet** - needs the owner's phones (ONLINE_SERVER_SETUP.md §3) |
+
+## Ball physics milestone (2026-11-21)
+
+| Suite | Result |
+|---|---|
+| C++ `cricket_tests` (Debug + sanitizers, Release GCC, Release Clang) | 261/261, 0 warnings |
+| Physics determinism: golden path fingerprints | identical on GCC debug, GCC release, Clang release |
+| Match calibration (computer v computer T20, physics only) | ~135 runs, ~5.5 wickets, ~49% dots per innings |
+| Node `controller_js` / `online_js` | 6/6, 3/3 |
+| Browser: phone controller / two-phone online / single player | all pass (single player 6/6 repeated runs) |
+

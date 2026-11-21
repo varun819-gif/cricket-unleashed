@@ -7,14 +7,16 @@ this milestone have been removed (see CHANGELOG.md).
 
 1. **No 3D game yet.** Unreal Engine work needs a Windows/Linux PC with a GPU
    (see DEVELOPMENT_PLAN.md). This milestone deliberately did not start it.
-2. **`QuickSim` is a statistical placeholder for ball physics.** Ball
-   outcomes are weighted dice, not physics. Test scoring rates (~5-6 an over)
-   are too high.
-3. **DRS evidence is SIMULATED, not real DRS technology.** Ball tracking,
-   edge detection, grounding / boundary replays and front-foot checks are
-   random values from `QuickSim::MakeCase`. There is no Hawk-Eye, UltraEdge,
-   Snickometer or any licensed system. The decision *rules* are real and
-   tested; the *evidence* is not.
+2. **Ball outcomes now come from the ball physics** (BALL_PHYSICS.md) in
+   every played match (offline, phone controller, online, single player).
+   `QuickSim` (statistical, weighted dice) is still used ONLY by the text
+   simulator `cricket_sim` and is labelled as such.
+3. **DRS evidence**: in played matches, LBW ball tracking and edges come from
+   our own physics (the ball's computed path), not from real DRS products
+   (no Hawk-Eye, UltraEdge or Snickometer, no licence, no imitation). In
+   `cricket_sim` the evidence is still random (`QuickSim::MakeCase`).
+   Grounding (run-outs/stumpings) and front-foot no-balls are not modelled
+   by the physics yet, so they don't occur in played matches.
 4. **Players' perception of a close call is a placeholder model** (the truth
    plus noise and bias, `QuickSim::Perceive`). The AI review logic itself
    never sees the evidence (enforced by a test). When physics exists, the
@@ -56,8 +58,9 @@ this milestone have been removed (see CHANGELOG.md).
 
 ## Mobile controller
 
-18. **Phone ball outcomes are simulated** (QuickSim nudged by shot, timing
-    and delivery) until Unreal ball physics exists.
+18. Phone play uses the ball physics. The phone shows the ball over 1.4 s
+    (slowed down so people can react); the tap timing is scaled to the real
+    flight time (about 0.5 s for a fast bowler).
 19. **Messages are signed, not encrypted.** Someone on the same Wi-Fi could
     see which buttons are pressed (not fake them). See MOBILE_CONTROLLER.md.
 20. **The local server is POSIX-only** (Linux / Android TV). Windows needs a
@@ -88,8 +91,7 @@ this milestone have been removed (see CHANGELOG.md).
     over matches are.
 29. One server process, single-threaded, data in files: fine for
     development; the PostgreSQL/Redis path is documented but not built.
-30. Ball outcomes online are the same **simulated placeholders** as the
-    phone controller.
+30. Online outcomes use the same ball physics, computed on the server.
 31. No per-IP limits: behind a tunnel / proxy every player arrives from the
     same address, so limits are per connection, per account and per server
     (e.g. 30 new guests a minute for the whole server - a flood can block
@@ -105,6 +107,21 @@ this milestone have been removed (see CHANGELOG.md).
     Watching for it.
 35. `/tv.json` (server health counts, no personal data) is visible to
     outsiders when the server is behind a tunnel.
+
+## Ball physics (see BALL_PHYSICS.md)
+
+36. **Simplified, calibrated model, not a research-grade simulation**: the
+    swing, seam, bounce, bat and fielding constants come from published
+    measurements where they exist and were tuned so whole matches look like
+    T20 cricket. Computer v computer T20 averages: ~135 runs, ~5.5 wickets
+    per innings (real T20Is: ~150-165 runs, ~6-7 wickets).
+37. Not modelled yet: run-outs, stumpings, hit wicket, overthrows, front-foot
+    no-balls, leg byes off the pad, catches at the boundary rope, wind,
+    humidity, dew, pitch wear changing during a match, ball getting softer.
+38. The batter's body is simple (bat zone + pads); there is no 3D body
+    collision (comes with Unreal animation).
+39. Computer players' decisions and execution vary with a seeded generator
+    (same seed = same match). Human inputs decide human players' balls.
 
 ## Operational notes
 

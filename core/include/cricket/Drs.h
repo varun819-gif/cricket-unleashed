@@ -14,10 +14,10 @@
 //
 // On dismissal decisions the TV umpire also checks for a front-foot no-ball.
 //
-// IMPORTANT: the evidence (edge detection, ball tracking, replays) is a
-// SIMULATED PLACEHOLDER today (QuickSim::MakeCase rolls dice). It is not real
-// DRS technology (no Hawk-Eye / UltraEdge or similar). Later it will come from
-// the game's own server-side ball physics. This file only judges evidence.
+// The evidence in played matches comes from the game's own ball physics
+// (BallOutcome: pitch point, pad impact, tracked path, bat contact). It is not
+// real DRS technology (no Hawk-Eye / UltraEdge or similar). The text simulator
+// still uses random evidence (QuickSim::MakeCase). This file only judges evidence.
 // All Judge* functions are pure: same input, same answer.
 #pragma once
 
