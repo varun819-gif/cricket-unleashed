@@ -246,4 +246,54 @@ Status CheckScorecard(const Match& m) {
     return Status::Ok();
 }
 
+Status CheckResult(const Match& m) {
+    if (m.Phase() != MatchPhase::Complete || m.Rules().oversPerInnings <= 0 || m.RainAffected()) return Status::Ok();
+    const auto& inns = m.AllInnings();
+    const MatchResult& r = m.Result();
+    if (r.kind == MatchResult::Kind::NoResult) return Status::Ok();
+    if (inns.size() != 2) return Status::Err("a limited-overs match should have 2 innings, has " + std::to_string(inns.size()));
+    const Innings& a = inns[0];
+    const Innings& b = inns[1];
+    const int maxBalls = m.Rules().oversPerInnings * m.Rules().ballsPerOver;
+    const int allOut = m.Rules().squadSize - 1;
+    for (const Innings* x : {&a, &b}) {
+        if (x->LegalBalls() > maxBalls) return Status::Err("an innings has more balls than the overs allow");
+        if (x->Wickets() > allOut) return Status::Err("an innings has more wickets than batters");
+    }
+    if (a.EndReason() != InningsEnd::AllOut && a.EndReason() != InningsEnd::OversComplete)
+        return Status::Err("first innings ended early without being all out or the overs done");
+    if (a.EndReason() == InningsEnd::AllOut && a.Wickets() != allOut) return Status::Err("first innings 'all out' but wickets wrong");
+    if (a.EndReason() == InningsEnd::OversComplete && a.LegalBalls() != maxBalls)
+        return Status::Err("first innings 'overs complete' but balls wrong");
+    if (b.BattingSide() == a.BattingSide()) return Status::Err("the same side batted twice");
+    const int target = a.Total() + 1;
+    if (b.Target() && *b.Target() != target) return Status::Err("chase target is not first-innings total + 1");
+    auto name = [&](int side) { return m.GetTeam(side).name; };
+    MatchResult want;
+    if (b.Total() >= target) {
+        // The chase stops the moment the target is reached (a last-ball six,
+        // perhaps off a no-ball, can take it a few past).
+        if (b.Total() > target + 6) return Status::Err("chase went on after the target was reached");
+        if (b.EndReason() != InningsEnd::TargetReached) return Status::Err("chase passed the target but didn't end as 'target reached'");
+        const int left = allOut - b.Wickets();
+        want = {MatchResult::Kind::Win, MatchResult::Margin::Wickets, b.BattingSide(), left,
+                name(b.BattingSide()) + " won by " + std::to_string(left) + (left == 1 ? " wicket" : " wickets")};
+    } else {
+        if (b.EndReason() != InningsEnd::AllOut && b.EndReason() != InningsEnd::OversComplete)
+            return Status::Err("chase ended short of the target without being all out or the overs done");
+        if (b.Total() == a.Total()) {
+            want = {MatchResult::Kind::Tie, MatchResult::Margin::None, -1, 0, "Match tied"};
+        } else {
+            const int by = a.Total() - b.Total();
+            want = {MatchResult::Kind::Win, MatchResult::Margin::Runs, a.BattingSide(), by,
+                    name(a.BattingSide()) + " won by " + std::to_string(by) + (by == 1 ? " run" : " runs")};
+        }
+    }
+    if (r.kind != want.kind || r.winner != want.winner || r.margin != want.margin || r.value != want.value)
+        return Status::Err("result disagrees with the scores: match says '" + r.summary + "', scores say '" + want.summary + "'");
+    if (r.summary != want.summary)
+        return Status::Err("result text '" + r.summary + "' should be '" + want.summary + "'");
+    return Status::Ok();
+}
+
 }  // namespace cricket

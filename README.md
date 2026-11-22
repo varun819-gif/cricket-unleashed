@@ -28,16 +28,16 @@ Needs CMake 3.20+ and a C++20 compiler (GCC 11+, Clang 14+ or MSVC 2022).
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./build/cricket_tests                      # 217 C++ tests
+./build/cricket_tests                      # 279 C++ tests
 (cd build && ctest)                        # C++ + phone-side JavaScript tests
 ./build/cricket_controller_host            # play with your phone: scan the QR it prints
-./build/cricket_sim t20 0 1                # AI vs AI T20 with commentary
-./build/cricket_sim odi 2 3 --quiet        # scorecard only
-./build/cricket_sim test 4 5 --hindi       # Test match, Hindi commentary
-./build/cricket_sim overs=5 --seed 42      # 5-over game, repeatable
+./build/cricket_sim t20 0 1                # AI vs AI T20 with commentary, scorecard, highlights
+./build/cricket_sim --quiet --record m.jsonl  # also write the ball-by-ball recording
+./build/cricket_sim --verify FILE.save     # replay a saved match, re-check scorecard + result
+./build/cricket_sim --dev-formats test 4 5 --hindi  # (development) Test match engine
 ./build/cricket_sim --teams                # list the fictional teams
 ./build/cricket_sim t20 --drs no-reviews   # DRS ruleset: icc | no-reviews | no-tech | custom:R:S[:lose][:calls]
-./build/cricket_sim odi --rain             # random rain delays, non-official rain-rule targets
+./build/cricket_sim --rain                 # random rain delays, non-official rain-rule targets
 ./build/cricket_server --port 8080         # online server: open http://localhost:8080/
 ```
 
@@ -58,10 +58,12 @@ cmake --build build -j
 | Commentary | lead + expert lines in English and Hindi, built only from verified ball events, never the same line twice in a row |
 | Multiplayer core | server-authoritative session: join sides, rejects duplicate and out-of-turn commands, review timer, break pauses, weather and penalty actions, ordered event log so a reconnecting client can catch up, crash recovery from the session journal |
 | Teams | 10 international sides with real country names and flags (India, Pakistan, ...); **players are fictional**; no board logos or kits |
-| **Phone controller** | QR pairing over home Wi-Fi, secret never sent over the network, signed + numbered messages, captain / player / spectator controls (toss, captaincy, review, bowling, batting, fielding), automatic reconnection with the game waiting for you, TV page with QR codes. Ball outcomes are **simulated placeholders** until Unreal physics. See [docs/MOBILE_CONTROLLER.md](docs/MOBILE_CONTROLLER.md) and [docs/CONNECT_YOUR_PHONE.md](docs/CONNECT_YOUR_PHONE.md) |
+| **Phone controller** | QR pairing over home Wi-Fi, secret never sent over the network, signed + numbered messages, captain / player / spectator controls (toss, captaincy, review, bowling, batting, **Run / Wait calls**, fielding), automatic reconnection with the game waiting for you, TV page with QR codes. Every ball is played by the ball physics. Tested on **emulated** Android phones; real-phone guide: [docs/ANDROID_PHONE_TESTING.md](docs/ANDROID_PHONE_TESTING.md). See [docs/MOBILE_CONTROLLER.md](docs/MOBILE_CONTROLLER.md) and [docs/CONNECT_YOUR_PHONE.md](docs/CONNECT_YOUR_PHONE.md) |
 | **Ball physics + gameplay** | deterministic flight, drag, wind, conventional + reverse swing, seam, spin, bounce on 5 pitch types with wear, cracks and footmarks over a Test, dew in day-night games, bat impact with timing, edges, step-out, LBW ball tracking; fielders who catch (incl. boundary catches), drop, stop and throw; running with run-outs, overthrows, byes, leg byes; stumpings; front-foot no-balls. Every DRS / TV-umpire decision uses physics evidence. Used for every ball offline, on the phone, online and in `cricket_sim`. Simplified and calibrated, not a research model. See [docs/BALL_PHYSICS.md](docs/BALL_PHYSICS.md) |
 | **Scorecards** | batting (R, B, 4s, 6s, SR, how out), bowling (O, M, R, W, Econ, wides, no-balls), extras, fall of wickets, partnerships; cross-checked on every test match; shown on the phone / browser and in `cricket_sim` |
-| **Single player vs computer** | in the same browser app: pick your country (e.g. India), the computer captain plays the other team (toss, batting order, bowling changes, fields, its batting and bowling); you control your batting and bowling. Uses the same rules engine and scorer. Practice only: not in ratings, stats or leaderboards. Ball outcomes are **simulated placeholders**. See [docs/SINGLE_PLAYER.md](docs/SINGLE_PLAYER.md) |
+| **Single player vs computer** | in the same browser app: pick your country (e.g. India), the computer captain plays the other team (toss, batting order, bowling changes, fields, its batting and bowling); you control your batting and bowling. Uses the same rules engine and scorer. Practice only: not in ratings, stats or leaderboards. A full 20-over match on an emulated phone is tested end to end. See [docs/SINGLE_PLAYER.md](docs/SINGLE_PLAYER.md) |
+| **Match recording + highlights** | every ball's physics path saved as JSON lines (online matches automatically); highlight finder (wickets, sixes, fours, fifties, reviews, the finish) - groundwork for replays and the future Cricket Creator Studio. No video yet. See [docs/CREATOR_STUDIO.md](docs/CREATOR_STUDIO.md) |
+| **Unreal prototype prep** | `unreal/` project + CricketCore plugin skeleton (untested, no Unreal here), PC check script. See [docs/UNREAL_PROTOTYPE_SETUP.md](docs/UNREAL_PROTOTYPE_SETUP.md) |
 | **Online multiplayer** (preview) | self-hosted `cricket_server` (₹0): guest players (no password), private rooms with 6-letter codes, quick + ranked matchmaking, Elo ratings, server-decided scores, reconnection (match waits 2 min, then ranked forfeit / casual AI takeover), anti-cheat timing check, duplicate-message protection, crash recovery, history, stats, leaderboards. ⚠️ Tested on one machine only - **the two-device internet test is still pending**. See [docs/ONLINE_MULTIPLAYER.md](docs/ONLINE_MULTIPLAYER.md) and [docs/ONLINE_SERVER_SETUP.md](docs/ONLINE_SERVER_SETUP.md) |
 
 ## Repository layout

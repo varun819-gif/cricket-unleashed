@@ -1,0 +1,16 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Cricket Core",
+	"Description": "The Cricket Unleashed rules engine and ball physics (engine-independent C++ from core/), wrapped for Unreal. Copy the core sources in with tools/unreal/sync_core.ps1 before building.",
+	"Category": "Gameplay",
+	"CanContainContent": false,
+	"Modules": [
+		{
+			"Name": "CricketCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

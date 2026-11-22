@@ -2,11 +2,13 @@
 // boundary catches, front-foot no-balls, stumpings, leg byes / byes,
 // run outs and overthrows, plus whole matches (all formats) checked through
 // the scorecard and the DRS records. Deterministic (fixed seeds).
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
 #include "Test.h"
 #include "cricket/BallOutcome.h"
+#include "cricket/Recording.h"
 #include "cricket/Scorecard.h"
 #include "cricket/TeamFactory.h"
 
@@ -313,6 +315,7 @@ TEST(gp_whole_matches_have_every_kind_of_event_and_add_up) {
         const Match& m = run.session->GetMatch();
         CHECK(m.Result().kind != MatchResult::Kind::None);
         CHECK_OK(CheckScorecard(m));
+        CHECK_OK(CheckResult(m));
         for (const auto& inn : m.AllInnings()) {
             byes += inn.GetExtras().byes;
             legByes += inn.GetExtras().legByes;
@@ -351,6 +354,7 @@ TEST(gp_odi_and_test_matches_behave_sensibly) {
     const Match& o = odi.session->GetMatch();
     CHECK(o.Result().kind != MatchResult::Kind::None);
     CHECK_OK(CheckScorecard(o));
+    CHECK_OK(CheckResult(o));
     const Innings& first = o.AllInnings()[0];
     CHECK(first.Total() > 120 && first.Total() < 450);
     Conditions test;
@@ -359,6 +363,7 @@ TEST(gp_odi_and_test_matches_behave_sensibly) {
     const Match& m = t.session->GetMatch();
     CHECK(m.Result().kind != MatchResult::Kind::None);
     CHECK_OK(CheckScorecard(m));
+    CHECK_OK(CheckResult(m));
     int balls = 0, runs = 0;
     for (const auto& inn : m.AllInnings()) balls += inn.LegalBalls(), runs += inn.Total();
     const double rpo = runs * 6.0 / balls;
@@ -391,4 +396,115 @@ TEST(gp_scorecard_contents) {
     for (const auto& p : c.partnerships) partnershipRuns += p.runs;
     CHECK_EQ(partnershipRuns, c.total - c.extras.penalty);
     CHECK_EQ(OversString(23), std::string("3.5"));
+}
+
+// The result is worked out again from the scores for many T20s (wins by
+// runs, by wickets, ties if any) and always agrees with the match.
+TEST(gp_results_agree_with_the_scores) {
+    int byRuns = 0, byWickets = 0, ties = 0;
+    for (uint64_t seed = 100; seed < 124; ++seed) {
+        auto run = PlayMatch(MatchRules::T20(), seed, Conditions{});
+        const Match& m = run.session->GetMatch();
+        CHECK(m.Phase() == MatchPhase::Complete);
+        CHECK_OK(CheckScorecard(m));
+        CHECK_OK(CheckResult(m));
+        const MatchResult& r = m.Result();
+        if (r.kind == MatchResult::Kind::Tie) ++ties;
+        else if (r.margin == MatchResult::Margin::Runs) ++byRuns;
+        else if (r.margin == MatchResult::Margin::Wickets) ++byWickets;
+        // The winner really scored more.
+        const auto& in = m.AllInnings();
+        if (r.kind == MatchResult::Kind::Win) {
+            const Innings& w = in[0].BattingSide() == r.winner ? in[0] : in[1];
+            const Innings& l = in[0].BattingSide() == r.winner ? in[1] : in[0];
+            CHECK(w.Total() > l.Total());
+        }
+    }
+    CHECK(byRuns >= 3);
+    CHECK(byWickets >= 3);
+    CHECK_EQ(byRuns + byWickets + ties, 24);
+}
+
+// Driving every ball is not safe: the computer bowlers vary their length, and
+// driving a back-of-a-length ball finds the edge far more often than driving
+// a full one (found by the full-match phone test: "always drive" was too easy).
+TEST(gp_driving_everything_is_punished_on_shorter_lengths) {
+    auto m = RightHandersMatch(8);
+    BallOutcome o(5);
+    int fullN = 0, fullBad = 0, shortN = 0, shortBad = 0;
+    for (int i = 0; i < 600; ++i) {
+        const DeliverySpec sp = o.SpecFor(*m, o.AiBowl(*m));
+        BatChoice b;
+        b.provided = true;
+        b.shot = "drive";
+        b.timingMs = (i * 7) % 31 - 15;  // well timed
+        const BallReport r = o.ResolveSpec(*m, FieldSetup{}, sp, b, nullptr);
+        if (!r.path.pitched) continue;
+        const bool bad = r.bat.contact != phys::Contact::Middled;
+        if (r.path.pitchPoint.y < 5.5) ++fullN, fullBad += bad;
+        else if (r.path.pitchPoint.y > 7.0) ++shortN, shortBad += bad;
+    }
+    CHECK(fullN > 50);
+    CHECK(shortN > 50);  // the bowlers do bowl back of a length
+    CHECK(fullBad * 100 < fullN * 15);
+    CHECK(shortBad * 100 > shortN * 60);
+}
+
+// ---------------------------------------------------------------- recording / highlights
+
+// Every ball the physics played lines up with the scorebook; highlights hold
+// every wicket and six; the package keeps wickets and the finish.
+TEST(gp_recording_and_highlights) {
+    auto run = PlayMatch(MatchRules::T20(), 41);
+    const Match& m = run.session->GetMatch();
+    MatchRecorder rec;
+    for (const auto& r : run.reports) rec.Add(r, "stock");
+    const auto balls = AllDeliveries(m);
+    CHECK_EQ(rec.Traces().size(), balls.size());
+    int wickets = 0, sixes = 0, fours = 0;
+    for (size_t i = 0; i < balls.size(); ++i) {
+        const auto& d = *balls[i];
+        const BallTrace& t = rec.Traces()[i];
+        CHECK(!t.flight.empty());
+        CHECK(t.flight.front().y > 15);               // starts at the bowler's end
+        CHECK(t.flight.size() < 120);                 // 10 ms samples, compact
+        if (t.pitched) CHECK(t.bounce.y > -1 && t.bounce.y < 20);
+        if (d.delivery.dismissal != Dismissal::None) ++wickets;
+        if (d.delivery.boundary && d.delivery.extra == ExtraType::None) (d.delivery.runs == 6 ? sixes : fours)++;
+        if (d.delivery.boundary && d.delivery.extra == ExtraType::None) CHECK(!t.afterShot.empty());
+    }
+    const auto hl = FindHighlights(m, &rec.Traces());
+    int hw = 0, hs = 0, hf = 0, finish = 0;
+    for (size_t k = 0; k < hl.size(); ++k) {
+        if (k) CHECK(hl[k - 1].ballIndex <= hl[k].ballIndex);  // match order
+        hw += hl[k].kind == HighlightKind::Wicket;
+        hs += hl[k].kind == HighlightKind::Six;
+        hf += hl[k].kind == HighlightKind::Four;
+        finish += hl[k].kind == HighlightKind::Finish;
+        CHECK(!hl[k].text.empty());
+    }
+    CHECK_EQ(hw, wickets);
+    CHECK_EQ(hs, sixes);
+    CHECK_EQ(hf, fours);
+    CHECK_EQ(finish, 1);
+    CHECK(hl.back().kind == HighlightKind::Finish || hl.back().ballIndex == static_cast<int>(balls.size()) - 1);
+    const auto pack = HighlightPackage(hl, 12);
+    CHECK(pack.size() <= 12);
+    bool hasFinish = false;
+    std::vector<int> packBalls;
+    for (const auto& h : pack) hasFinish |= h.kind == HighlightKind::Finish, packBalls.push_back(h.ballIndex);
+    CHECK(hasFinish);
+    // A mix: wickets lead, and sixes / fours appear too when the match had them.
+    int pw = 0, pb = 0;
+    for (const auto& h : pack) pw += h.kind == HighlightKind::Wicket, pb += h.kind == HighlightKind::Six || h.kind == HighlightKind::Four;
+    CHECK(pw >= std::min(wickets, 4));
+    if (sixes + fours > 0) CHECK(pb >= 1);
+    for (size_t k = 1; k < pack.size(); ++k) CHECK(pack[k - 1].ballIndex < pack[k].ballIndex);  // one clip per ball, in order
+    // JSON lines: match header, one line per ball, highlights.
+    const std::string js = rec.ToJsonLines(m, "standard");
+    size_t lines = 0;
+    for (char c : js) lines += c == '\n';
+    CHECK_EQ(lines, balls.size() + 2);
+    CHECK(js.find("\"physicsTraces\":true") != std::string::npos);
+    CHECK(js.find("\"type\":\"highlights\"") != std::string::npos);
 }

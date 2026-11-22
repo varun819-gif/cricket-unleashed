@@ -98,6 +98,8 @@ function decide(p) {
   else if (has('review')) a = { do: 'accept' };
   else if (has('ready')) a = { do: 'ready' };
   else if (has('bowl')) a = { do: 'bowl', variation: 'stock', line: 0, length: Math.random(), effort: 70 };
+  else if (has('run')) a = { do: 'run', call: Math.random() < 0.5 ? 'wait' : '1' };  // answer at once (keeps the test quick)
+  else if (has('fielding')) a = { do: 'fielding', act: (s.fieldPlay && s.fieldPlay.kind) === 'catch' ? 'catch' : 'dive', timing: 0 };
   if (a) p.client.act(a);
 }
 

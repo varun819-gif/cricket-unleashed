@@ -10,7 +10,7 @@
 //          [--humans 1|2] [--seed N]   (matches are T20; --dev-format overs=N|odi|test
 //          is for automated tests and development only)
 //          [--web DIR] [--devices FILE] [--print-links] [--quiet] [--exit-after-ms N]
-//          [--pitch standard|green|dusty|bouncy|flat] [--wind X,Y] [--day-night]
+//          [--pitch standard|green|dusty|bouncy|flat] [--wind X,Y] [--day-night]  [--dev-fast]
 #include <chrono>
 #include <cstdio>
 #include <csignal>
@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     std::string bind = "0.0.0.0", hostIp, web = std::string(CRICKET_SOURCE_DIR) + "/controller/web", devicesFile;
     std::string pitchName = "standard";
     double windX = 0, windY = 0;
-    bool dayNight = false;
+    bool dayNight = false, devFast = false;
     std::string format = "t20";
     uint64_t seed = static_cast<uint64_t>(NowMs());
     bool printLinks = false, quiet = false;
@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
         else if (a == "--pitch") pitchName = next();
         else if (a == "--wind") std::sscanf(next().c_str(), "%lf,%lf", &windX, &windY);
         else if (a == "--day-night") dayNight = true;
+        else if (a == "--dev-fast") devFast = true;  // automated tests: quicker balls
         else if (a == "--web") web = next();
         else if (a == "--devices") devicesFile = next();
         else if (a == "--print-links") printLinks = true;
@@ -117,6 +118,11 @@ int main(int argc, char** argv) {
     cfg.conditions.wind = {windX, windY, 0};
     cfg.conditions.dayNight = dayNight;
     cfg.human = {true, humans >= 2};
+    if (devFast) {
+        cfg.ballFlightMs = 700;
+        cfg.batWindowMs = 700;
+        cfg.fieldWindowMs = 500;
+    }
     cfg.seed = seed;
     MatchHost host(rules, {all[0], all[1]}, hub, cfg);
 
@@ -132,6 +138,16 @@ int main(int argc, char** argv) {
     if (hostIp.empty()) {
         auto addrs = LocalServer::LocalAddresses();
         hostIp = addrs.empty() ? "127.0.0.1" : addrs[0];
+        // Inside WSL on Windows the address we see is WSL's own (172.x),
+        // which phones can't reach. Found while writing the Android phone
+        // guide: tell the player what to do instead of failing silently.
+        std::ifstream ver("/proc/version");
+        std::string v;
+        std::getline(ver, v);
+        if (v.find("icrosoft") != std::string::npos || v.find("WSL") != std::string::npos)
+            std::cerr << "NOTE: running inside WSL. Phones may not be able to reach " << hostIp << ".\n"
+                      << "      If they can't, start again with --host-ip <your laptop's Wi-Fi IPv4 address from ipconfig>\n"
+                      << "      and forward the port (docs/ANDROID_PHONE_TESTING.md, step 2).\n";
     }
 
     std::vector<Slot> slots = {{0, Role::Captain, all[0].name + " captain", {}}};

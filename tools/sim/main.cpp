@@ -7,6 +7,9 @@
 //                    [--rain]   random rain delays (non-official rain rule for targets)
 //                    [--pitch standard|green|dusty|bouncy|flat] [--wind X,Y] [--day-night]
 //                    [--dev-formats odi|test|overs=N]  (development only; the game is T20)
+//                    [--record FILE]  ball-by-ball physics + highlights (JSON lines)
+//        cricket_sim --verify FILE   rebuild a saved match (e.g. the server's
+//                    data/matches/<id>.save) and re-check its scorecard and result
 // Team numbers 0-9 (see list printed with --teams).
 #include <cstdio>
 #include <cstdlib>
@@ -19,6 +22,8 @@
 #include "cricket/Commentary.h"
 #include "cricket/Scorecard.h"
 #include "cricket/MatchSession.h"
+#include "cricket/Recording.h"
+#include "cricket/SaveGame.h"
 #include "cricket/TeamFactory.h"
 
 using namespace cricket;
@@ -52,9 +57,31 @@ static void PrintScorecard(const Match& m) {
     }
     std::cout << "\nRESULT: " << m.Result().summary << "\n";
     if (Status s = CheckScorecard(m); !s) std::cout << "SCORECARD CHECK FAILED: " << s.error << "\n";
+    if (Status s = CheckResult(m); !s) std::cout << "RESULT CHECK FAILED: " << s.error << "\n";
+}
+
+// Rebuilds a saved match from its file (every ball replayed through the rules
+// engine) and checks the scorecard and the result. Exit code 0 = all correct.
+static int Verify(const std::string& path) {
+    SessionLoad l = LoadSessionFile(path);
+    if (!l.status) {
+        std::cout << "VERIFY FAILED: cannot load " << path << ": " << l.status.error << "\n";
+        return 1;
+    }
+    if (!l.session->HasMatch()) {
+        std::cout << "VERIFY FAILED: no match in the file\n";
+        return 1;
+    }
+    const Match& m = l.session->GetMatch();
+    PrintScorecard(m);
+    const Status a = CheckScorecard(m), b = CheckResult(m);
+    std::cout << "VERIFY " << (a && b ? "OK" : "FAILED") << ": " << m.Result().summary << "\n";
+    for (const auto& c : BuildScorecard(m)) std::cout << "TOTAL " << c.team << " " << c.total << "/" << c.wickets << " " << c.overs << "\n";
+    return a && b ? 0 : 1;
 }
 
 int main(int argc, char** argv) {
+    if (argc == 3 && std::strcmp(argv[1], "--verify") == 0) return Verify(argv[2]);
     MatchRules rules = MatchRules::T20();
     int ta = 0, tb = 1, teamArgs = 0;
     uint64_t seed = Toss::SecureSeed();
@@ -63,6 +90,8 @@ int main(int argc, char** argv) {
     double windX = 0, windY = 0;
     auto teams = NationalTeams();
     std::string drsName = "icc";
+    std::string recordPath;  // --record FILE: ball-by-ball physics + highlights (JSON lines)
+    MatchRecorder recorder;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "t20") rules = MatchRules::T20();
@@ -82,6 +111,7 @@ int main(int argc, char** argv) {
         else if (a == "--wind" && i + 1 < argc) std::sscanf(argv[++i], "%lf,%lf", &windX, &windY);
         else if (a == "--seed" && i + 1 < argc) seed = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--drs" && i + 1 < argc) drsName = argv[++i];
+        else if (a == "--record" && i + 1 < argc) recordPath = argv[++i];
         else if (a == "--teams") {
             for (size_t t = 0; t < teams.size(); ++t) std::cout << t << ": " << teams[t].name << "\n";
             return 0;
@@ -133,11 +163,22 @@ int main(int argc, char** argv) {
             session.RainDelay(std::uniform_int_distribution<int>(10, 150)(weather));
         if (session.WaitingFor().what == "delivery") {
             const BallReport r = physics.PlayComputerBall(session, &perception);
+            recorder.Add(r);
             if (!quiet) std::cout << "      [" << r.summary << "]\n";
         }
         printNewEvents();
     }
     printNewEvents();
     PrintScorecard(session.GetMatch());
+    const auto highlights = HighlightPackage(FindHighlights(session.GetMatch(), &recorder.Traces()), 12);
+    std::cout << "\nHIGHLIGHTS (" << highlights.size() << " clips):\n";
+    for (const auto& h : highlights) std::cout << "  " << h.text << "\n";
+    if (!recordPath.empty()) {
+        if (Status st = SaveFileAtomic(recordPath, recorder.ToJsonLines(session.GetMatch(), pitchName)); !st) {
+            std::cerr << "could not write " << recordPath << ": " << st.error << "\n";
+            return 1;
+        }
+        std::cout << "Recording written to " << recordPath << "\n";
+    }
     return 0;
 }

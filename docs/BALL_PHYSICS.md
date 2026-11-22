@@ -39,6 +39,7 @@ scored ball). Tests: `core/tests/PhysicsTests.cpp`,
 | Dew | second innings of day-night limited-overs games: less grip off the pitch, less swing |
 | Pitch wear | grows with overs bowled (a lot over five Test days): more grip and turn, less seam, lower and more variable bounce from cracks (a deterministic pattern per pitch), rough in the bowlers' footmarks |
 | Phone fielding | the fielding side can time a catch / dive and choose the throw end; this nudges the physics (better or worse) |
+| Phone running | the batting side calls WAIT / 1 / 2 / 3 when the ball is in the field (shown: when the throw reaches the stumps, how long the batters take); the call replaces the computer's judgement, the physics decides if they make it |
 
 ## 2. Typical numbers it produces
 
@@ -61,14 +62,24 @@ Latest run:
 
 | | This model | Real internationals (approx.) |
 |---|---|---|
-| T20 runs / wickets per innings | 162 / 5.0 | ~150-165 / ~6-7 |
-| T20 dot balls, 4s, 6s per innings | 34%, 13.2, 5.8 | ~38-42%, ~13, ~6-7 |
-| T20 dismissals | caught 54%, bowled 23%, lbw 18%, run out 5% | caught ~60-65%, bowled ~15%, lbw ~10%, run out ~7% |
-| ODI runs / wickets per innings | 271 / 6.1 | ~250-280 / ~7 |
-| Test run rate, runs per wicket | 3.77, ~33 | ~3.2-3.4, ~30-33 |
-| Pitch effect (T20 runs per innings) | flat 184, standard 177, dusty 157, bouncy 158, green 147 | flat roads score most; green tops favour seamers |
-| Spinners' share of wickets | dusty 45%, green 29% | turners favour spin |
+| T20 runs / wickets per innings | 153 / 5.0 | ~150-165 / ~6-7 |
+| T20 dot balls, 4s, 6s per innings | 34%, 10.5, 3.6 | ~38-42%, ~13, ~6-7 |
+| T20 dismissals | caught 65%, bowled 18%, lbw 12%, run out 4% | caught ~60-65%, bowled ~15%, lbw ~10%, run out ~7% |
+| ODI runs / wickets per innings (engine only, not offered) | 220 / 6.8 | ~250-280 / ~7 |
+| Test run rate, runs per wicket (engine only) | 3.33, ~20 | ~3.2-3.4, ~30-33 |
+| Pitch effect (T20 runs per innings) | flat 170, dusty 147, bouncy 142, standard 140, green 135 | flat roads score most; green tops favour seamers |
+| Spinners' share of wickets | dusty 36%, green 28% | turners favour spin |
 | Strong v weak side (70% ratings) | strong side won 30 of 30 | mismatches are one-sided |
+
+Latest change (2026-11-21, after the full-match phone test): computer
+bowlers now vary their length more (good length to back of a length, 12%
+hard length) and a shot played to the wrong length (e.g. driving a ball
+that is too short) is penalised more (3.5 cm off the middle per metre,
+was 1 cm). Reason: a script that drove every ball with near-perfect timing
+scored 220+ for no wicket. Computer batters now choose cut / pull / a
+worked single for back-of-a-length balls. Sixes and fours dropped a little
+(still inside the bands); ODI and Test (not offered) score lower than real
+ones.
 
 Bands checked: T20 135-200 runs and 4-8.5 wickets, ODI 200-330 runs and
 5-9.5 wickets, Test run rate 2.5-4.2 and 18-45 runs per wicket, flat > green
@@ -107,11 +118,14 @@ striker's middle stump, +y towards the bowler, +x off side, +z up.
 - Simplified, calibrated physics, not a research model. Constants come from
   published measurements where available (drag, swing range, bounce) and
   were tuned for realistic match statistics.
-- Not modelled yet: run-outs, stumpings, hit wicket, overthrows, front-foot
-  no-balls, leg byes, boundary-rope catches, wind, humidity / dew, pitch
-  wear during a match, the ball softening.
+- Not modelled yet: hit wicket, humidity, the ball softening, a slow wet
+  outfield (run-outs, stumpings, overthrows, no-balls, leg byes, boundary
+  catches, wind, dew and pitch wear are in - section 1b).
 - Batter body is simple (bat zone + pads), no 3D collision.
-- Calibration: a little low on runs and sixes, a little high on dot balls.
+- Calibration: a little low on sixes and fours; ODI / Test (not offered)
+  score less than real matches.
+- Humans: the Run? card gives exact throw and running times (a real
+  batter judges by eye); human balance is tested with scripts only.
 - The phone UI slows the ball down for reaction; timing is scaled to the
   real flight time.
 

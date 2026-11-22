@@ -51,6 +51,9 @@ h2 { font-size: 18px; margin: 4px 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grid4 > button { min-width: 0; padding-left: 4px; padding-right: 4px; }
+.hint { margin: 4px 0 8px; font-size: 0.9em; opacity: 0.85; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 button {
   font: inherit; font-weight: 700; color: var(--accent-text); background: var(--accent);

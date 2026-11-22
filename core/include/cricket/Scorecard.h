@@ -69,6 +69,12 @@ std::vector<InningsCard> BuildScorecard(const Match& m);
 // Cross-checks the card against the innings totals. Ok, or what disagrees.
 Status CheckScorecard(const Match& m);
 
+// Re-works out the result of a finished limited-overs match from the two
+// innings totals and wickets (winner, margin, the result text) and checks the
+// match agrees. Rain-affected matches (revised targets) and unfinished ones
+// are not judged here (Ok).
+Status CheckResult(const Match& m);
+
 std::string OversString(int legalBalls, int ballsPerOver = 6);
 
 }  // namespace cricket

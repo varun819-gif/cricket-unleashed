@@ -32,6 +32,7 @@ add_library(cricket_core
   core/src/BallPhysics.cpp
   core/src/BallOutcome.cpp
   core/src/Scorecard.cpp
+  core/src/Recording.cpp
 )
 target_include_directories(cricket_core PUBLIC core/include)
 # Ball physics must give bit-identical results on every machine (offline game
@@ -87,7 +88,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   get_target_property(_ctl_src cricket_controller SOURCES)
   add_library(cricket_unreal_compat_check OBJECT ${_core_src} ${_ctl_src})
   target_include_directories(cricket_unreal_compat_check PRIVATE core/include controller/include)
-  target_compile_options(cricket_unreal_compat_check PRIVATE -fno-exceptions -fno-rtti)
+  target_compile_options(cricket_unreal_compat_check PRIVATE -fno-exceptions -fno-rtti
+    -include ${CMAKE_SOURCE_DIR}/tools/unreal/ue_macro_shim.h)
 endif()
 
 enable_testing()

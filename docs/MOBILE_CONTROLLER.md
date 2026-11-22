@@ -112,9 +112,12 @@ same.
 | Connection instructions | done: CONNECT_YOUR_PHONE.md, on-screen help | - |
 | **Scorecard on the phone** | **new**: full card (batting R/B/4s/6s/SR, bowling O/M/R/W/Econ, extras, fall of wickets, partnerships) | browser test checks the numbers add up |
 | **Match conditions on the phone** | **new**: pitch type and wear, wind, dew | host test |
+| **Run / Wait calls** | **new (2026-11-21)**: when your batters hit the ball into the field, a **"Run?"** card shows where the ball is going, when the throw will reach the stumps, and how long your batters take for 1, 2, 3 runs. Tap **WAIT / 1 / 2 / 3**; the physics then decides if they make it (run out by a direct hit is possible). No tap before the countdown ends = the batters judge it themselves. Byes and leg byes are still run automatically | `ctl_host_run_wait_calls_from_the_phone`, `ctl_host_run_call_timeout_and_refusal`, two-phone and full-T20 browser tests |
+| **Two phones, pairing + reconnection** | browser-tested (emulated): both pair, phone 2 Wi-Fi off → phone 1 sees "Waiting for the other team's phone" and the match waits, phone 2 returns to the same place, phone 1 reload keeps its pairing, same result on both | `controller/web/tests/two_phones.e2e.mjs` |
+| **Plain-http address (like a real phone on Wi-Fi)** | tested: the page works when the browser does not treat it as "secure" | two-phone test |
 
-Still missing: running between the wickets is decided by the computer (the
-batters judge each run); no physical-phone test yet.
+Still missing: a test on **physical** phones (guide:
+[ANDROID_PHONE_TESTING.md](ANDROID_PHONE_TESTING.md)).
 
 ## Reconnection
 
@@ -159,6 +162,12 @@ Unreal, a game-mode component will:
   Hash vectors, link parsing, and end to end against the real host: two
   phones play a full India vs Pakistan match, a phone reconnects on its own,
   and used / forged QR codes are refused.
+- Two phones: `node controller/web/tests/two_phones.e2e.mjs [screenshotDir]`
+  (pairing, Wi-Fi drop and "waiting" screen, reload, run calls, same result
+  on both phones, scorecard adds up; plain-http network address).
+- Full T20 vs computer on one phone: `node online/web/tests/t20_full.e2e.mjs`
+  (all 20 overs; every control; scorecard and result checked, then the
+  server's saved match is replayed by `cricket_sim --verify`).
 - Browser: `node controller/web/tests/browser.e2e.mjs [screenshotDir]`.
   Chromium emulating an Android Pixel 7 taps through the real page: pairing,
   bowling, batting, the reconnect message, resume after reload, no

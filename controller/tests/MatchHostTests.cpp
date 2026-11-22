@@ -3,6 +3,7 @@
 // and the (placeholder) way inputs shape outcomes.
 #include "../../core/tests/Test.h"
 #include "PhoneSim.h"
+#include "cricket/Recording.h"
 #include "cricket/Scorecard.h"
 #include "cricket/TeamFactory.h"
 #include "cricket/controller/MatchHost.h"
@@ -84,6 +85,17 @@ struct BotPhone {
             static const char* shots[] = {"defend", "drive", "cut", "pull", "flick", "loft", "leave", "sweep"};
             a.Set("do", "bat").Set("shot", shots[static_cast<int>(u() * 8)]).Set("dir", static_cast<int>(u() * 180 - 90));
             a.Set("timing", static_cast<int>(u() * 400 - 200));
+        } else if (Has("run")) {
+            // Like a sensible player: run as many as the screen says are
+            // safe, with a little misjudgement.
+            const Json* rp = state->Get("runPlay");
+            int n = 0;
+            if (rp && rp->Get("runS")) {
+                const double back = rp->Num("backS") + (u() - 0.5) * 0.6;
+                const auto& t = rp->Get("runS")->Items();
+                while (n < 3 && t[static_cast<size_t>(n)].AsNumber() + 0.3 <= back) ++n;
+            }
+            a.Set("do", "run").Set("call", n == 0 ? "wait" : std::to_string(n));
         } else {
             lastActed = sig;
             return;
@@ -125,6 +137,11 @@ TEST(ctl_host_phone_vs_ai_full_t20) {
     CHECK(india.acks > 50);
     CHECK_EQ(india.rejected, 0);
     for (const auto& e : india.errors) std::cerr << "  rejected: " << e << "\n";
+    // The full T20 scorecard and result add up; the phone shows the same result.
+    const Match& m = w.host.Session().GetMatch();
+    CHECK_OK(CheckScorecard(m));
+    CHECK_OK(CheckResult(m));
+    if (india.state) CHECK_EQ(india.state->Str("result"), m.Result().summary);
 }
 
 TEST(ctl_host_two_phones_india_vs_pakistan) {
@@ -141,6 +158,8 @@ TEST(ctl_host_two_phones_india_vs_pakistan) {
     }
     const Match& m = w.host.Session().GetMatch();
     CHECK(m.Phase() == MatchPhase::Complete);
+    CHECK_OK(CheckScorecard(m));
+    CHECK_OK(CheckResult(m));
     CHECK_EQ(india.rejected + pakistan.rejected, 0);
     // Every ball was bowled by a phone (no timeouts needed) and batted by a phone.
     int balls = 0;
@@ -431,4 +450,123 @@ TEST(ctl_host_fielding_prompt_step_out_scorecard_and_conditions) {
     CHECK_EQ(india.rejected, 0);
     for (const auto& e : india.errors) std::cerr << "  rejected: " << e << "\n";
     CHECK_OK(CheckScorecard(w.host.Session().GetMatch()));
+    CHECK_OK(CheckResult(w.host.Session().GetMatch()));
+}
+
+// Run / Wait from the batting phone: the call decides how many runs the
+// batters attempt (the physics then decides if they make it).
+TEST(ctl_host_run_wait_calls_from_the_phone) {
+    HostConfig cfg;
+    cfg.human = {true, false};
+    World w(MatchRules::Custom(5), cfg, 21);
+    BotPhone india(w.net, 4);
+    CHECK(india.p.Pair(w.hub.CreatePairing(0, Role::Captain, w.now), w.now));
+    int calls = 0, waits = 0, ones = 0, twos = 0, threes = 0, checked = 0;
+    for (int i = 0; i < 200000 && w.host.Session().WaitingFor().what != "none"; ++i) {
+        w.Step();
+        india.Read();
+        if (india.state && india.Has("run")) {
+            const Json* rp = india.state->Get("runPlay");
+            CHECK(rp != nullptr);
+            CHECK(!rp->Str("fielder").empty());
+            const int pick = calls % 4;  // wait, 1, 2, 3 in turn
+            const char* names[] = {"wait", "1", "2", "3"};
+            const size_t before = w.host.Session().GetMatch().Current().Balls().size();
+            const size_t inningsBefore = w.host.Session().GetMatch().AllInnings().size();
+            india.Do(Json::Object().Set("do", "run").Set("call", names[pick]), w.now);
+            ++calls;
+            (pick == 0 ? waits : pick == 1 ? ones : pick == 2 ? twos : threes)++;
+            w.Step();
+            const BallReport* b = w.host.LastBall();
+            CHECK(b != nullptr);
+            const Match& m = w.host.Session().GetMatch();
+            if (b && m.AllInnings().size() == inningsBefore && m.Current().Balls().size() == before + 1) {
+                CHECK(b->runningChance);
+                CHECK_EQ(b->shot.runsCalled, pick);
+                const DeliveryRecord& rec = m.Current().Balls().back();
+                if (pick == 0) {
+                    CHECK_EQ(b->runsAttempted, 0);
+                    CHECK_EQ(rec.delivery.runs, 0);           // stayed in: no runs
+                    CHECK(rec.delivery.dismissal != Dismissal::RunOut);
+                } else {
+                    CHECK_EQ(b->runsAttempted, pick);
+                    if (rec.delivery.dismissal == Dismissal::RunOut) CHECK_EQ(rec.delivery.runs, pick - 1);
+                    else if (!rec.delivery.boundary) CHECK_EQ(rec.delivery.runs, pick + b->overthrows);
+                }
+                ++checked;
+            }
+            india.lastActed.clear();
+            continue;
+        }
+        india.Play(w.now);
+    }
+    CHECK(w.host.Session().GetMatch().Phase() == MatchPhase::Complete);
+    CHECK(waits >= 2);
+    CHECK(ones >= 2);
+    CHECK(twos >= 2);
+    CHECK(threes >= 1);
+    CHECK(checked >= 6);
+    // The recording: one physics trace per ball, valid JSON lines, the run
+    // calls kept (Creator Studio / Unreal replays).
+    const Match& mm = w.host.Session().GetMatch();
+    CHECK_EQ(w.host.Recorder().Traces().size(), AllDeliveries(mm).size());
+    const std::string rec = w.host.RecordingJson();
+    size_t start = 0, lines = 0, called = 0;
+    while (start < rec.size()) {
+        const size_t nl = rec.find('\n', start);
+        const auto j = Json::Parse(rec.substr(start, nl - start), nullptr, 32);
+        CHECK(j.has_value());
+        if (j && j->Str("type") == "ball" && j->Get("physics") && j->Get("physics")->Num("runsCalled", -1) >= 0) ++called;
+        ++lines;
+        start = nl + 1;
+    }
+    CHECK_EQ(lines, AllDeliveries(mm).size() + 2);
+    CHECK(called >= 6);
+    CHECK_EQ(india.rejected, 0);
+    for (const auto& e : india.errors) std::cerr << "  rejected: " << e << "\n";
+    CHECK_OK(CheckScorecard(w.host.Session().GetMatch()));
+    CHECK_OK(CheckResult(w.host.Session().GetMatch()));
+}
+
+// No call in time: the batters judge it themselves; the computer side is
+// never asked; a call is refused when no ball is in the field.
+TEST(ctl_host_run_call_timeout_and_refusal) {
+    HostConfig cfg;
+    cfg.human = {true, false};
+    World w(MatchRules::Custom(2), cfg, 3);
+    BotPhone india(w.net, 6);
+    CHECK(india.p.Pair(w.hub.CreatePairing(0, Role::Captain, w.now), w.now));
+    int prompts = 0, refusedEarly = 0;
+    for (int i = 0; i < 200000 && w.host.Session().WaitingFor().what != "none"; ++i) {
+        w.Step();
+        india.Read();
+        if (india.state && india.Has("bat") && refusedEarly == 0) {
+            // Not in the field yet: a run call is refused.
+            india.Do(Json::Object().Set("do", "run").Set("call", "1"), w.now);
+            w.Step();
+            india.Read();
+            if (india.rejected > 0) refusedEarly = 1, india.rejected = 0, india.errors.clear();
+        }
+        if (india.state && india.Has("run")) {
+            ++prompts;
+            CHECK(india.state->Num("stageMsLeft") > 0);
+            const BallReport* before = w.host.LastBall();
+            const int balls = before ? 1 : 0;
+            (void)balls;
+            while (india.state && india.Has("run")) {  // say nothing until the window closes
+                w.Step();
+                india.Read();
+            }
+            const BallReport* b = w.host.LastBall();
+            CHECK(b != nullptr);
+            if (b) CHECK_EQ(b->shot.runsCalled, -1);  // the batters judged it
+            india.lastActed.clear();
+            continue;
+        }
+        india.Play(w.now);
+    }
+    CHECK(w.host.Session().GetMatch().Phase() == MatchPhase::Complete);
+    CHECK(prompts >= 1);
+    CHECK_EQ(refusedEarly, 1);
+    CHECK_EQ(india.rejected, 0);
 }

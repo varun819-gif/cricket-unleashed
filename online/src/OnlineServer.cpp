@@ -826,6 +826,8 @@ void OnlineServer::FinishMatch(OnlineMatch& m, int winner, const std::string& ou
         fs::create_directories(cfg_.dataDir + "/matches", ec);
         rec.saveFile = "matches/" + m.id + ".save";
         SaveSessionFile(session, cfg_.dataDir + "/" + rec.saveFile);
+        // Ball-by-ball physics recording + highlights (replays, Creator Studio).
+        SaveFileAtomic(cfg_.dataDir + "/matches/" + m.id + ".replay.jsonl", m.host->RecordingJson());
     }
     rec = store_.RecordMatch(rec);
     boardCache_.clear();

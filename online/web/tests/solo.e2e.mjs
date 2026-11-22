@@ -54,6 +54,7 @@ try {
         if (d.scorecard) window.__card = d.scorecard;
         if (d.conditions) window.__cond = d.conditions;
         if (d.fieldPlay) window.__fieldPlays = (window.__fieldPlays || 0) + 1;
+        if (d.runPlay) window.__runPlays = (window.__runPlays || 0) + 1;
       }
     });
   });
@@ -65,7 +66,7 @@ try {
   const seen = new Set();
   const scores = new Set();
   const messages = new Set();
-  let shotBowl = false, shotBat = false, shotField = false, steppedOut = false, fielded = 0;
+  let shotBowl = false, shotBat = false, shotField = false, steppedOut = false, fielded = 0, ranCalls = 0;
   const click = async (sel) => {
     const el = page.locator(sel).first();
     // Short timeout: if the screen just changed, the loop simply tries again.
@@ -98,6 +99,8 @@ try {
       if (!steppedOut && await click('button:text("Step out")')) steppedOut = true;
       await sleep(1000);  // wait for the ball to arrive
       await click('button:text("drive")');
+    } else if (c.includes('run')) {
+      if (await click('.grid4 button:text-is("1")')) ranCalls++;
     } else if (c.includes('fielding')) {
       if (shots && !shotField) { await page.screenshot({ path: path.join(shots, 'solo-fielding.png') }); shotField = true; }
       fielded++;
@@ -121,6 +124,8 @@ try {
   // the match; when it does, the prompt must appear and work.
   const plays = await page.evaluate(() => window.__fieldPlays || 0);
   check(plays === 0 || fielded >= 1, 'fielding prompt shown and used when the ball came to a fielder (' + fielded + ' of ' + plays + ' states)');
+  const runPlays = await page.evaluate(() => window.__runPlays || 0);
+  check(runPlays === 0 || ranCalls >= 1, 'Run? card shown and a run called when my batters had a run to judge (' + ranCalls + ')');
   check(steppedOut, 'stepped down the pitch with the Step out button');
   check(msgs.some((m) => /down the pitch/.test(m)), 'the physics played the shot down the pitch');
   const cond = await page.evaluate(() => window.__cond);

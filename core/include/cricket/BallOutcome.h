@@ -41,6 +41,8 @@ struct BatChoice {
     double timingMs = 0;         // in real (physics) time; + late
     bool provided = false;       // false = no shot offered
     bool advance = false;        // dance down the pitch (can be stumped if missed)
+    int runsCalled = -1;         // the batters' call when the ball is in the field: -1 = they judge it
+                                 // themselves (computer), 0 = wait (no run), 1..4 = run that many
 };
 
 // The fielding side's live input for this ball (phone): catch / dive timing
@@ -76,6 +78,10 @@ struct BallReport {
     int overthrows = 0;
     bool frontFootNoBall = false; // overstepped (called on the field or found on TV)
     bool stumpingChance = false;
+    bool runningChance = false;   // the ball stayed in the field: the batters had a run to judge
+    double runSafeS = 0;          // seconds before a direct hit could reach the stumps
+    double ballBackS = 0;         // seconds until the throw reaches the stumps (best end, normal throw)
+    double oneRunS = 0, twoRunsS = 0, threeRunsS = 0;  // how long these batters take
     phys::PitchSpot pitchSpot{};  // the surface where it pitched
 };
 

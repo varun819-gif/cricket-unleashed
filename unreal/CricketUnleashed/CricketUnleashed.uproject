@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.4",
+	"Category": "",
+	"Description": "Cricket Unleashed - first 3D prototype (P1: One Ball). NOT YET BUILT: needs a capable Windows PC with Unreal Engine 5.",
+	"Modules": [
+		{
+			"Name": "CricketUnleashed",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "CricketCore",
+			"Enabled": true
+		}
+	]
+}

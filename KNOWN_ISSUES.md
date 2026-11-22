@@ -113,7 +113,7 @@ this milestone have been removed (see CHANGELOG.md).
 36. **Simplified, calibrated model, not a research-grade simulation**: the
     swing, seam, bounce, bat and fielding constants come from published
     measurements where they exist and were tuned so whole matches look like
-    T20 cricket. Computer v computer T20 averages: ~135 runs, ~5.5 wickets
+    T20 cricket. Computer v computer T20 averages: ~153 runs, ~5.0 wickets
     per innings (real T20Is: ~150-165 runs, ~6-7 wickets).
 37. Now modelled (2026-11-21): run-outs, stumpings, overthrows, byes, leg
     byes, front-foot no-balls, boundary catches and saves, wind, dew, pitch
@@ -121,14 +121,34 @@ this milestone have been removed (see CHANGELOG.md).
     field, humidity, the ball getting softer, rain making the outfield slow,
     mankading, the batter choosing NOT to run on a misfield.
 38. The batter's body is simple (bat zone + pads/thigh box); there is no 3D
-    body collision (comes with Unreal animation). Running between the wickets
-    is decided by the computer for both sides (humans don't call runs).
+    body collision (comes with Unreal animation). Humans now call their runs
+    (WAIT / 1 / 2 / 3) when the ball is hit into the field; byes and leg
+    byes are still run by the computer.
 40. Calibration (computer v computer, see BALL_PHYSICS.md): stumpings
     (<1% of wickets) and run-outs (~5%) are a little rare; Test run rate is
     a little high (~3.8); ODI extras a little high (~12 an innings).
 41. Pitch and weather effects use simple rules (wear = overs bowled;
     footmark zones fixed outside the stumps; dew only in the second innings
     of day-night limited-overs games). They are plausible, not measured.
+42. Human-vs-computer balance is checked only with automated "players"
+    (scripts tapping the phone screens), not real people. Found and fixed:
+    the computer bowlers pitched almost everything full, so a script that
+    drove every ball with near-perfect timing scored 220+ without losing a
+    wicket. Now the bowlers vary their length (good length to back of a
+    length, sometimes a hard length) and driving a ball that is too short
+    finds the edge more often. Perfect timing is still strongly rewarded;
+    human catching with perfect timing is also strong. Tune with real
+    players.
+43. The Run? card shows the batters exact numbers (throw time, running
+    time); a real batter judges by eye. It may make running too easy -
+    review after real-phone tests.
+45. **OPEN (found 2026-11-21, not fixed):** a human who bowls the same spot
+    every ball (especially a spinner a little short of a good length) gets
+    the computer batters out for very few runs (20-40 in a scripted test).
+    The computer batters lack a scoring answer to that ball. Fix needed
+    before real players test single player.
+44. The Unreal files (`unreal/`) and the PC check script
+    (`tools/pc_check`) have never run: no Unreal or Windows here.
 39. Computer players' decisions and execution vary with a seeded generator
     (same seed = same match). Human inputs decide human players' balls.
 

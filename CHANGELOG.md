@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.13.0] - 2026-11-21 - Run/Wait on the phone, full-match and two-phone tests, result checks, recording, Unreal prep
+
+### Added
+- **Run / Wait calls from the phone**: when the batting side hits the ball
+  into the field, a "Run?" card (WAIT / 1 / 2 / 3) shows the fielder, the
+  distance, when the throw reaches the stumps and how long the batters take.
+  The call replaces the computer's judgement; the physics decides if they
+  make it. No call in time = the batters judge it. Works locally and online.
+- `CheckResult()`: works out the winner and margin again from the innings
+  totals and checks the match (used in tests, `cricket_sim`, calibration).
+- `cricket_sim --verify FILE`: replays a saved match and re-checks its
+  scorecard and result. `cricket_sim --record FILE`: ball-by-ball recording.
+- **Match recording + highlights** (`Recording.h`): physics trace of every
+  ball, JSON lines; online matches save `matches/<id>.replay.jsonl`;
+  highlight finder and a mixed highlights package (Creator Studio groundwork).
+- Browser tests: complete 20-over T20 human v computer on an emulated
+  Android phone (`online/web/tests/t20_full.e2e.mjs`), two-phone pairing and
+  reconnection on a plain-http network address
+  (`controller/web/tests/two_phones.e2e.mjs`).
+- `--dev-fast` (tests only) for `cricket_server` and `cricket_controller_host`.
+- `docs/ANDROID_PHONE_TESTING.md` (physical phone guide + checklist),
+  `docs/UNREAL_PROTOTYPE_SETUP.md`, `docs/CREATOR_STUDIO.md`.
+- `tools/pc_check` (read-only Windows PC check for Unreal; untested here).
+- `unreal/` project + CricketCore plugin skeleton (untested, no Unreal here),
+  `tools/unreal/sync_core.*`; the Unreal compile check now also catches
+  names Unreal uses as macros.
+
+### Changed
+- Computer bowlers vary their length more; driving a ball that is too short
+  is riskier (found by the full-match phone test). Recalibrated (T20 153 / 5.0).
+- `cricket_controller_host` warns inside WSL that phones may not reach the
+  auto-detected address.
+
+### Fixed
+- Docs said ball outcomes on the phone / single player were "simulated
+  placeholders" (stale since the physics milestone).
+
 ## [0.12.1] - 2026-11-21 - T20 only
 
 ### Changed

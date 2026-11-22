@@ -32,6 +32,7 @@
   let state = null;
   let ball = null;                 // {arriveAt, variation}
   let fieldBall = null;            // {arriveAt, flight, kind, fielder}: the ball on its way to our fielder
+  let runBall = null;              // {arriveAt, flight}: ball in the field, our batters must call
   let stepOut = false;             // batter dances down the pitch for the next shot
   let showCard = false;            // scorecard open
   const bowlChoice = { variation: 'stock', line: 0, length: 0.5, effort: 75 };
@@ -76,6 +77,13 @@
     if (type === 'field') {
       fieldBall = { arriveAt: performance.now() + data.arriveInMs, flight: data.arriveInMs, kind: data.kind, fielder: data.fielder };
       buzz([20, 30, 20]);
+      lastSignature = '';
+      render();
+      return;
+    }
+    if (type === 'run') {
+      runBall = { arriveAt: performance.now() + data.arriveInMs, flight: data.arriveInMs };
+      buzz([15, 25, 15]);
       lastSignature = '';
       render();
       return;
@@ -224,6 +232,7 @@
     if (has('bowl')) parts.push(bowlCard());
     if (has('bat') || (ball && state.stage === 'ball' && client.side === state.score?.batting)) parts.push(batCard());
     if (has('fielding')) parts.push(fieldCard());
+    if (has('run')) parts.push(runCard());
 
     if (has('field') || has('new-ball') || has('declare')) {
       const sel = el('select', { 'aria-label': 'Field preset' }, (opts.fieldPresets || []).map((p) => el('option', { value: p, text: p })));
@@ -302,6 +311,37 @@
       el('div', { class: 'grid2' },
         el('button', { class: 'chip', text: 'Throw: keeper end', onclick: act('throw-keeper') }),
         el('button', { class: 'chip', text: 'Throw: bowler end', onclick: act('throw-bowler') })));
+  }
+
+  // The ball is in the field: call the run. WAIT = stay in the crease;
+  // 1 / 2 / 3 = run that many. No call in time = the batters judge it.
+  function runCard() {
+    const play = state.runPlay || {};
+    const rb = runBall;
+    const bar = el('div');
+    const animate = () => {
+      if (!rb || !bar.isConnected) return;
+      const p = 1 - (rb.arriveAt - performance.now()) / rb.flight;
+      bar.style.width = Math.max(0, Math.min(1, p)) * 100 + '%';
+      if (p < 1.6) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+    const call = (c) => () => { send({ do: 'run', call: c }); runBall = null; };
+    const where = (play.deep ? 'Deep, ' : 'In the ring, ') + (play.distance != null ? play.distance + ' m away' : '');
+    const rs = play.runS || [];
+    const back = play.backS != null ? 'Throw reaches the stumps in about ' + play.backS + ' s' : '';
+    const times = rs.length === 3 ? 'Your batters: 1 run ' + rs[0] + ' s · 2 runs ' + rs[1] + ' s · 3 runs ' + rs[2] + ' s' : '';
+    return card('Run? Ball going to ' + (play.fielder || 'a fielder'),
+      el('p', { class: 'hint', text: where }),
+      back ? el('p', { class: 'hint', text: back }) : null,
+      times ? el('p', { class: 'hint', text: times + ' (a direct hit is faster!)' }) : null,
+      el('div', { class: 'incoming' }, bar),
+      el('div', { class: 'grid4' },
+        el('button', { class: 'secondary', text: 'WAIT', onclick: call('wait') }),
+        el('button', { text: '1', onclick: call('1') }),
+        el('button', { text: '2', onclick: call('2') }),
+        el('button', { text: '3', onclick: call('3') })),
+      state.stageMsLeft != null ? countdown('stageMsLeft') : null);
   }
 
   // Full scorecard (batting, bowling, extras, fall of wickets, partnerships).
@@ -390,5 +430,5 @@
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && client.status !== 'connected' && client.isPaired()) client.start(null);
   });
-  window.CUApp = { client, get state() { return state; } };  // for automated tests
+  window.CUApp = { client, get state() { return state; }, ballMsLeft: () => (ball ? ball.arriveAt - performance.now() : null) };  // for automated tests
 })();

@@ -540,11 +540,12 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
     const double dl = shape.horizontalBat ? at->p.x - bat.x : at->p.z - bat.z;  // along the blade
     dw += (dw < 0 ? -1.0 : 1.0) * Abs(t) * 0.0007;  // mistimed = the bat comes through in the wrong place
     // The wrong shot for the length (driving a ball that isn't full, pulling
-    // one that isn't short...) puts the bat in a worse place: 1 cm per metre.
+    // one that isn't short...) puts the bat in a worse place: 3.5 cm per metre
+    // (driving everything is not a safe way to bat).
     {
         double lo = 0, hi = 30;
         switch (in.shot) {
-            case Shot::Drive: lo = 0.0, hi = 5.0; break;
+            case Shot::Drive: lo = 0.0, hi = 6.0; break;  // up to a fuller good length (front or back foot)
             case Shot::Loft: lo = 0.0, hi = 4.5; break;
             case Shot::Pull: lo = 7.5, hi = 30; break;
             case Shot::Cut: lo = 6.5, hi = 30; break;
@@ -554,7 +555,7 @@ BatResult PlayShot(const DeliveryPath& pathIn, const DeliverySpec& specIn, const
         }
         const double len = path.pitched ? path.pitchPoint.y : 0.0;
         const double mismatch = len < lo ? lo - len : (len > hi ? len - hi : 0.0);
-        dw += (dw < 0 ? -1.0 : 1.0) * 0.01 * mismatch;
+        dw += (dw < 0 ? -1.0 : 1.0) * 0.035 * mismatch;
     }
     const double halfW = 0.054;
     const double wOff = Abs(dw);

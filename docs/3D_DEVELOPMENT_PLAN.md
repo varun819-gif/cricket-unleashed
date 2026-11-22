@@ -46,9 +46,13 @@ checked on every build).
    C++ core: delivery speed, drag, swing, seam, spin, bounce, pitch
    friction, bat contact. It is deterministic and tested without graphics,
    and the online server can use the same model to keep results fair.
-3. **On the new PC:** create the Unreal project, plug in the core, and build
+3. ✅ **Prepared (2026-11-21, see UNREAL_PROTOTYPE_SETUP.md):** `unreal/`
+   project and CricketCore plugin skeleton, core copy script, ball replay
+   actor, match recordings Unreal can replay, a read-only PC check script.
+   Untested until a capable PC exists.
+4. **On the new PC:** create the Unreal project, plug in the core, and build
    the **first playable prototype** (Section 6).
-4. Then, in order: animations (bowling, batting), fielders + keeper +
+5. Then, in order: animations (bowling, batting), fielders + keeper +
    catches, stadium, crowd, broadcast cameras and scoreboard, faces
    (MetaHuman), commentary audio, online, phone controller in 3D.
 

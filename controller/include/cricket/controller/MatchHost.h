@@ -26,6 +26,7 @@
 
 #include "cricket/AutoCaptain.h"
 #include "cricket/BallOutcome.h"
+#include "cricket/Recording.h"
 #include "cricket/MatchSession.h"
 #include "cricket/controller/ControllerHub.h"
 
@@ -62,6 +63,9 @@ struct HostConfig {
     // side gets a "catch it / stop it" prompt and can choose the throw end.
     bool fieldingControls = true;
     int64_t fieldWindowMs = 900;  // extra time after the ball reaches the fielder
+    // Running from the phone: when the ball stays in the field, the batting
+    // side calls WAIT / 1 / 2 / 3 (no call in time = the batters judge it).
+    bool runningControls = true;
 };
 
 // The full scorecard as JSON (phone / browser / online).
@@ -95,6 +99,10 @@ public:
 
     // The physics report of the last ball (null before the first ball).
     const BallReport* LastBall() const { return lastBall_ ? &*lastBall_ : nullptr; }
+    // Every ball's physics trace (replays, 3D, Creator Studio highlights).
+    const MatchRecorder& Recorder() const { return recorder_; }
+    // The recording as JSON lines (see Recording.h).
+    std::string RecordingJson() const;
     // Real (physics) flight time of the ball in the air now, in ms.
     int64_t RealFlightMs() const { return realFlightMs_; }
 
@@ -117,6 +125,7 @@ private:
     QuickSim sim_;          // players' perception on appeals only (never outcomes)
     BallOutcome outcome_;   // the physics
     std::optional<BallReport> lastBall_;
+    MatchRecorder recorder_;
     phys::DeliverySpec spec_;
     phys::DeliveryPath path_;  // the ball in the air now
     BatChoice pendingBat_;     // the shot, while the fielders react
@@ -124,6 +133,10 @@ private:
     std::string fieldKind_;    // "catch" / "stop" during the fielding stage
     std::string fieldName_;
     int64_t fieldArriveAt_ = 0, fieldRealMs_ = 0, fieldPresentMs_ = 0;
+    bool awaitField_ = false, awaitRun_ = false;  // who we are waiting for in the "field" stage
+    double runDistance_ = 0;                       // where the ball will be gathered (m from the striker)
+    bool runDeep_ = false;
+    double ballBackS_ = 0, oneRunS_ = 0, twoRunsS_ = 0, threeRunsS_ = 0;
     mutable uint64_t cardKey_ = UINT64_MAX;  // scorecard cache
     mutable Json cardJson_;
     int64_t realFlightMs_ = 0;

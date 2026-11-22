@@ -1,6 +1,7 @@
 #include "cricket/controller/MatchHost.h"
 
 #include <cmath>
+#include <cstdio>
 
 #include "cricket/Scorecard.h"
 
@@ -109,7 +110,8 @@ std::vector<std::string> MatchHost::AllowedControls(int side, Role role) const {
     if (p.what == "delivery") {
         if (stage_ == "bowl" && !batting) out.push_back("bowl");
         if (stage_ == "ball" && batting && !bat_.provided) out.push_back("bat");
-        if (stage_ == "field" && !batting) out.push_back("fielding");
+        if (stage_ == "field" && !batting && awaitField_) out.push_back("fielding");
+        if (stage_ == "field" && batting && awaitRun_) out.push_back("run");
     }
     return out;
 }
@@ -137,6 +139,10 @@ Status MatchHost::Captaincy(int side, const std::string& what, const Json& a, in
     if (what == "ready") return Submit(side, CommandType::ResumePlay, 0, 0, now);
     return Status::Err("unknown control");
 }
+
+namespace {
+double R1(double x) { return std::round(x * 10) / 10; }
+}  // namespace
 
 Status MatchHost::Apply(const ControllerAction& act, int64_t now) {
     const std::string what = act.action.Str("do");
@@ -210,7 +216,24 @@ Status MatchHost::Apply(const ControllerAction& act, int64_t now) {
         fielding_.assist.provided = true;
         if (f == "catch") fielding_.assist.catchBonus = bonus;
         else fielding_.assist.stopBonus = bonus;
-        FinishBall(now);
+        awaitField_ = false;
+        if (!awaitRun_) FinishBall(now);
+        return Status::Ok();
+    }
+    if (what == "run") {
+        // The batters' call: "wait" (no run) or 1, 2, 3 runs.
+        const std::string c = a.Str("call");
+        int n = -1;
+        if (c == "wait" || c == "0") n = 0;
+        else if (c == "1" || c == "2" || c == "3") n = c[0] - '0';
+        if (n < 0) {
+            const int64_t k = a.Int("runs", -1);
+            if (k >= 0 && k <= 3) n = static_cast<int>(k);
+        }
+        if (n < 0) return Status::Err("call wait, 1, 2 or 3");
+        pendingBat_.runsCalled = n;
+        awaitRun_ = false;
+        if (!awaitField_) FinishBall(now);
         return Status::Ok();
     }
     Status s = Captaincy(act.side, what, a, now);
@@ -265,20 +288,33 @@ void MatchHost::ResolveBall(int64_t now) {
     }
     pendingBat_ = bat;
     fielding_ = {};
-    const int fielding = m.FieldingSide();
-    if (cfg_.fieldingControls && cfg_.human[fielding] && SideConnected(fielding)) {
+    awaitField_ = awaitRun_ = false;
+    const int fielding = m.FieldingSide(), batting = m.BattingSide();
+    const bool humanField = cfg_.fieldingControls && cfg_.human[fielding] && SideConnected(fielding);
+    const bool humanRun = cfg_.runningControls && cfg_.human[batting] && SideConnected(batting);
+    if (humanField || humanRun) {
         // Look ahead (on a copy, so no random numbers are used up) to see if
-        // the ball goes to a fielder; if so, the fielding phone gets to react.
+        // the ball goes to a fielder; if so, the fielding phone gets to react
+        // and the batting phone calls the run.
         BallOutcome probe = outcome_;
         const BallReport pre = probe.ResolveSpec(m, session_->Field(fielding), spec_, bat, nullptr, &path_);
         const bool offBat = pre.bat.contact != phys::Contact::Missed && pre.bat.contact != phys::Contact::Pad &&
                             pre.bat.contact != phys::Contact::Bowled;
-        const bool play = offBat && (pre.field.caught || pre.field.dropped || (pre.field.slot >= 0 && !pre.field.boundary));
-        if (play && !pre.field.path.empty()) {
+        const bool inField = offBat && !pre.field.path.empty() && pre.field.slot >= 0 && !pre.field.boundary;
+        awaitField_ = humanField && offBat && !pre.field.path.empty() &&
+                      (pre.field.caught || pre.field.dropped || inField);
+        awaitRun_ = humanRun && inField && !pre.field.caught && pre.runningChance;
+        if (awaitField_ || awaitRun_) {
             stage_ = "field";
             fieldKind_ = (pre.field.caught || pre.field.dropped) ? "catch" : "stop";
             const Team& t = m.GetTeam(fielding);
             fieldName_ = pre.field.fielder >= 0 ? t.xi.at(static_cast<size_t>(pre.field.fielder)).name : "a fielder";
+            runDistance_ = phys::Length(phys::V3{pre.field.gatheredPoint.x, pre.field.gatheredPoint.y, 0});
+            runDeep_ = runDistance_ > 40;
+            ballBackS_ = pre.ballBackS;
+            oneRunS_ = pre.oneRunS;
+            twoRunsS_ = pre.twoRunsS;
+            threeRunsS_ = pre.threeRunsS;
             fieldRealMs_ = static_cast<int64_t>(pre.field.path.back().t * 1000);
             const double present = cfg_.ballFlightMs > 0 && realFlightMs_ > 0
                                        ? static_cast<double>(fieldRealMs_) * cfg_.ballFlightMs / realFlightMs_
@@ -288,11 +324,21 @@ void MatchHost::ResolveBall(int64_t now) {
             int64_t latency = 0;
             if (cfg_.serverTimingCheck)
                 for (const auto& d : hub_.Devices())
-                    if (d.side == fielding) latency = std::max(latency, hub_.RttMs(d.id));
+                    if (d.side == fielding || d.side == batting) latency = std::max(latency, hub_.RttMs(d.id));
             deadline_ = fieldArriveAt_ + cfg_.fieldWindowMs + std::clamp<int64_t>(latency, 0, 1500);
-            Json ev = Json::Object();
-            ev.Set("k", "field").Set("kind", fieldKind_).Set("fielder", fieldName_).Set("arriveInMs", fieldPresentMs_);
-            hub_.Broadcast(fielding, ev);
+            if (awaitField_) {
+                Json ev = Json::Object();
+                ev.Set("k", "field").Set("kind", fieldKind_).Set("fielder", fieldName_).Set("arriveInMs", fieldPresentMs_);
+                hub_.Broadcast(fielding, ev);
+            }
+            if (awaitRun_) {
+                Json ev = Json::Object();
+                ev.Set("k", "run").Set("fielder", fieldName_).Set("arriveInMs", fieldPresentMs_);
+                ev.Set("distance", std::round(runDistance_)).Set("deep", runDeep_).Set("backS", R1(ballBackS_));
+                ev.Set("runS", Json::Array().Push(Json::Number(R1(oneRunS_))).Push(Json::Number(R1(twoRunsS_)))
+                                   .Push(Json::Number(R1(threeRunsS_))));
+                hub_.Broadcast(batting, ev);
+            }
             return;
         }
     }
@@ -303,8 +349,10 @@ void MatchHost::FinishBall(int64_t now) {
     const Match& m = session_->GetMatch();
     BallReport rep = outcome_.ResolveSpec(m, session_->Field(m.FieldingSide()), spec_, pendingBat_, &sim_, &path_,
                                           fielding_);
+    recorder_.Add(rep, bowl_.variation.empty() ? "stock" : bowl_.variation);
     stage_.clear();
     fieldKind_.clear();
+    awaitField_ = awaitRun_ = false;
     if (!rep.appeal || !session_->ResolveAppeal(*rep.appeal)) session_->ResolveDelivery(rep.delivery);
     lastBall_ = std::move(rep);
     (void)now;
@@ -435,7 +483,14 @@ Json MatchHost::ViewFor(int side, Role role, int64_t now) const {
     v.Set("yourSide", side).Set("role", ToString(role));
     v.Set("stage", stage_);
     v.Set("physics", true);  // every ball is played out by the ball physics
-    if (stage_ == "field") v.Set("fieldPlay", Json::Object().Set("kind", fieldKind_).Set("fielder", fieldName_));
+    if (stage_ == "field") {
+        v.Set("fieldPlay", Json::Object().Set("kind", fieldKind_).Set("fielder", fieldName_));
+        if (awaitRun_)
+            v.Set("runPlay", Json::Object().Set("fielder", fieldName_).Set("distance", std::round(runDistance_))
+                                 .Set("deep", runDeep_).Set("backS", R1(ballBackS_))
+                                 .Set("runS", Json::Array().Push(Json::Number(R1(oneRunS_)))
+                                                  .Push(Json::Number(R1(twoRunsS_))).Push(Json::Number(R1(threeRunsS_)))));
+    }
     if (session_->HasMatch()) {
         const Match& mm = session_->GetMatch();
         const phys::Pitch pitch = outcome_.PitchFor(mm);
@@ -471,7 +526,7 @@ Json MatchHost::ViewFor(int side, Role role, int64_t now) const {
     for (const auto& t : teams) names.Push(Json::String(t.name));
     v.Set("teams", names);
     if (p.what == "review") v.Set("reviewMsLeft", session_->ReviewMsLeft());
-    if (stage_ == "bowl" || stage_ == "ball") v.Set("stageMsLeft", std::max<int64_t>(0, deadline_ - now));
+    if (stage_ == "bowl" || stage_ == "ball" || stage_ == "field") v.Set("stageMsLeft", std::max<int64_t>(0, deadline_ - now));
     if (!session_->HasMatch()) {
         v.Set("toss", session_->GetToss().Phase() == TossPhase::AwaitingCall ? "call" : "decide");
         return v;
@@ -557,6 +612,18 @@ void MatchHost::PublishStates(int64_t now) {
         lastSentAt_[d.id] = now;
         hub_.SendTo(d.id, view);
     }
+}
+
+}  // namespace cricket::ctl
+
+namespace cricket::ctl {
+
+std::string MatchHost::RecordingJson() const {
+    if (!session_->HasMatch()) return "";
+    char cond[160];
+    std::snprintf(cond, sizeof cond, "%s pitch, wind %.1f km/h%s", cfg_.conditions.pitchName.c_str(),
+                  phys::Length(cfg_.conditions.wind) * 3.6, cfg_.conditions.dayNight ? ", day-night" : "");
+    return recorder_.ToJsonLines(session_->GetMatch(), cond);
 }
 
 }  // namespace cricket::ctl

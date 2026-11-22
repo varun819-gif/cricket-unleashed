@@ -28,9 +28,18 @@ automatically.
   effort, press **BOWL**.
 - **Batting:** when "Ball coming" appears, drag the half-circle to aim, then
   tap a shot **as the yellow bar fills**. Timing matters.
+- **Running:** after you hit the ball into the field a **Run?** card
+  appears. It says when the throw will reach the stumps and how long your
+  batters take for 1, 2 or 3 runs. Tap **WAIT**, **1**, **2** or **3**.
+  Too greedy = run out! No tap = your batters decide.
+- **Fielding:** when the ball goes to your fielder, tap **CATCH** / **DIVE**
+  as the bar fills, and choose which end to throw to.
 - **Captain:** choose openers, bowlers, the field and reviews. When a review
   is possible, a big **REVIEW** button with a countdown appears.
 - Tap **⛶** for full screen.
+
+Testing with your own Android phones on a Windows laptop (WSL): see
+[ANDROID_PHONE_TESTING.md](ANDROID_PHONE_TESTING.md).
 
 ## If something goes wrong
 

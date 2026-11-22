@@ -54,7 +54,7 @@ void Play(Stats& st, MatchRules rules, Team a, Team b, uint64_t seed, const std:
     const Match& m = s.GetMatch();
     st.matches++;
     if (m.Result().kind == MatchResult::Kind::Win && m.Result().winner == 0) st.winsA++;
-    if (!CheckScorecard(m).ok) st.scoreProblems++;
+    if (!CheckScorecard(m).ok || !CheckResult(m).ok) st.scoreProblems++;
     for (const auto& inn : m.AllInnings()) {
         st.innings++;
         st.runs += inn.Total();

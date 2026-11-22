@@ -75,3 +75,13 @@ laptop: **Start match**. Full steps: ONLINE_SERVER_SETUP.md.
 | `cannot use port 8080` / `another cricket_server is already using` | a server is already running in another window - use it or close it |
 | Chrome can't open localhost:8080 | check the server window still shows `LISTENING 8080` |
 | Old page after updating | press Ctrl + F5 in Chrome |
+
+## Testing with your Android phone
+
+Phone as a controller on home Wi-Fi, or two phones online: step-by-step
+guide and checklist in [ANDROID_PHONE_TESTING.md](ANDROID_PHONE_TESTING.md).
+
+## Can this PC run Unreal Engine?
+
+Copy `tools/pc_check` to the PC and double-click `check_pc.bat` (free,
+read-only). See [UNREAL_PROTOTYPE_SETUP.md](UNREAL_PROTOTYPE_SETUP.md).

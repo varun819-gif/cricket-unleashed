@@ -1,0 +1,12 @@
+# Unreal build output
+CricketUnleashed/Binaries/
+CricketUnleashed/Intermediate/
+CricketUnleashed/Saved/
+CricketUnleashed/DerivedDataCache/
+CricketUnleashed/Plugins/*/Binaries/
+CricketUnleashed/Plugins/*/Intermediate/
+CricketUnleashed/*.sln
+CricketUnleashed/.vs/
+# Copies of core/ made by tools/unreal/sync_core (core/ is the master)
+CricketUnleashed/Plugins/CricketCore/Source/CricketCore/Public/cricket/
+CricketUnleashed/Plugins/CricketCore/Source/CricketCore/Private/Core/

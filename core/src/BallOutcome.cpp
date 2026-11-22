@@ -162,7 +162,10 @@ BowlChoice BallOutcome::AiBowl(const Match& m) {
     const int maxOvers = inn.MaxOvers();
     const bool death = maxOvers > 0 && over > maxOvers - 4;
     const bool newBall = inn.OversWithCurrentBall() < 8;
-    c.length = 0.42 + rng_.Uniform() * 0.14;
+    // Good length to back of a length (about 5.3-7.1 m), sometimes a hard
+    // length (7.3-8.5 m): a batter can't drive everything.
+    c.length = 0.44 + rng_.Uniform() * 0.18;
+    if (rng_.Uniform() < 0.12) c.length = 0.64 + rng_.Uniform() * 0.12;
     c.line = 0.08 + rng_.Uniform() * 0.30;
     if (death && u < 0.30) c.variation = "yorker", c.line = 0.0 + rng_.Uniform() * 0.15;
     else if (death && u < 0.40) c.variation = "yorker", c.line = 0.95;  // wide yorker outside off
@@ -236,9 +239,11 @@ BatChoice BallOutcome::AiShot(const Match& m, const DeliveryPath& path, const De
         }
         else if (attack) {
             if (pitchY < 5.5) pick(rng_.Uniform() < a * (death ? 0.9 : 0.5) ? "loft" : "drive", Clamp(10 + 50 * x, -20, 60));
-            else if (z > 0.8 && x < 0.15) pick("pull", -60);
-            else if (x > 0.1) pick("drive", Clamp(30 + 50 * x, 10, 70));  // punch off the back foot
-            else pick("flick", -35);
+            else if (z > 0.8 && x < 0.15 && pitchY > 6.8) pick("pull", -60);
+            else if (pitchY > 6.5 && x > 0.2) pick("cut", 85);           // back of a length, width: cut
+            else if (pitchY <= 6.8 && x > 0.1) pick("drive", Clamp(30 + 50 * x, 10, 70));  // punch off the back foot
+            else if (pitchY <= 6.8) pick("flick", -35);
+            else push();                                                   // hard length: work it for one
         } else if (rng_.Uniform() < (inn.MaxOvers() == 0 ? (spin ? 0.6 : 0.3) : inn.MaxOvers() <= 20 ? 0.8 : 0.6)) {
             // push for a single (in Tests, working spinners around)
             push();
@@ -252,7 +257,7 @@ BatChoice BallOutcome::AiShot(const Match& m, const DeliveryPath& path, const De
     }
     // Execution: the timing of a real player varies with skill and pace.
     // T20 batters swing harder and take more risk: less precise.
-    const double sigma = (86 - 59 * skill) * (0.8 + 0.4 * (spec.speedKph / 150.0)) * (inn.MaxOvers() > 0 && inn.MaxOvers() <= 20 ? 1.06 : 1.0);
+    const double sigma = (86 - 59 * skill) * (0.8 + 0.4 * (spec.speedKph / 150.0)) * (inn.MaxOvers() > 0 && inn.MaxOvers() <= 20 ? 0.99 : 1.0);
     b.timingMs = rng_.Normal(sigma);
     b.direction += rng_.Normal(6);
     return b;
@@ -364,8 +369,18 @@ BallReport BallOutcome::ResolveSpec(const Match& m, const FieldSetup& field, con
         // direct hit), with a misjudgement that shrinks with experience.
         const double arrival = std::min(fr.atStrikerEnd, fr.atBowlerEnd) - 0.4;
         const double estimate = arrival + rng_.Normal(0.42 - 0.22 * batSkill);
+        r.runningChance = true;
+        r.runSafeS = arrival;
+        r.ballBackS = arrival + 0.4;
+        r.oneRunS = tRun(1);
+        r.twoRunsS = tRun(2);
+        r.threeRunsS = tRun(3);
         int n = 0;
-        while (n < 4 && tRun(n + 1) + aggressionMargin <= estimate) ++n;
+        if (bat.runsCalled >= 0) {
+            n = std::min(bat.runsCalled, 4);  // a human called it (from the phone)
+        } else {
+            while (n < 4 && tRun(n + 1) + aggressionMargin <= estimate) ++n;
+        }
         if (n == 0) return ru;
         int end = fc.throwEnd;
         if (end < 0) end = fr.atStrikerEnd <= fr.atBowlerEnd ? 0 : 1;
