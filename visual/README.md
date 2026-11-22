@@ -97,3 +97,17 @@ Shots: `1_broadcast`, `2_bowler_slowmo`, `3_drive_slowmo`, `4_chase`,
 | Grass, pitch, sky, sun | **IMPROVED** | mowing stripes, patchy grass, pitch cracks and footmarks, Nishita sky, sharper sun shadows |
 | Cameras, close-ups, slow motion | **DONE** | broadcast, tracking bowler cam (half speed), front-on batter cam (quarter-speed contact), ball-chase cam, umpire close-up, depth of field |
 | Crowd, stands | **NOT DONE** | next phase |
+
+## Phase 2 results
+
+`docs/media/3d/phase2/`: `delivery_v2.mp4` (8.6 s: broadcast run-up,
+half-speed delivery, quarter-speed cover drive contact, ball chase to the
+rope, umpire's four signal), `drive_contact.jpg`, `bowler_release.jpg`,
+`broadcast.jpg`, `five_players_faces.jpg`, `before_after.jpg`.
+Rendered on 4 CPU cores (no GPU) at 960x540: about 17 s per frame, about
+70 minutes for the video. On a laptop expect several hours.
+
+Known visible limits: the clothes are still close-fitting (no cloth
+simulation); faces are plain and mostly hidden by helmets/caps; movement is
+key-posed, so some transitions are stiff; no crowd or stands; no fielders
+apart from the keeper.

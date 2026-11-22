@@ -591,6 +591,13 @@ def build_player(name, spec):
                            trousers_m, 0.003, 0.008, relax=8),
         "shoes": _shell(name + "_shoes", co, normals, groups[SHOES], lambda v: 0.010, weights, arm, shoe_m, 0.004, 0),
     }
+    # Hidden waist layer in trouser fabric: when the player bends, the shirt
+    # hem can lift; this stops a gap (a hole into the hollow clothes) showing.
+    waist_faces = [f for f in faces_all if face_region(f) in (SHIRT, TROUSERS)
+                   and waist_z - 0.16 < sum(co[i].z for i in f) / len(f) < waist_z + 0.22
+                   and not any("arm" in (dominant.get(i) or "") for i in f)]
+    shells["waist"] = _shell(name + "_waist", co, normals, waist_faces, lambda v: 0.009, weights, arm, trousers_m,
+                             0.0, 0.0, relax=6)
     if gloves:
         gm = _mat(name + "_gloves", spec.get("glove_color", (0.95, 0.95, 0.95)), 0.6)
         off = 0.011 if gloves == "bat" else 0.019
