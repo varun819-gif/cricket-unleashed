@@ -1,6 +1,7 @@
 # Cricket Unleashed: 3D Development Plan (consolidated)
 
 Date: 2026-11-20. Supersedes the outline in UNREAL_DEVELOPMENT_PLAN.md.
+**Superseded on 2026-11-22 by [AAA_3D_PLAN.md](AAA_3D_PLAN.md)** (realistic visual target, 6-stage order, updated costs).
 Status: **plan only. No 3D feature exists yet.** Nothing was bought.
 
 ## 1. Can this laptop run Unreal Engine 5? No, not usefully.
