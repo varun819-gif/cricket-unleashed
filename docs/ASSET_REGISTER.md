@@ -8,6 +8,8 @@ it is added to the project.
 |---|---|---|---|---|---|---|---|
 | National flag images: India, Pakistan, Australia, England, South Africa, New Zealand, Sri Lanka, Bangladesh, Afghanistan (`online/web/flags/*.svg`) | SVG images | flag-icons 7.2.3 (github.com/lipis/flag-icons), via the npm registry | MIT (licence text in `online/web/flags/LICENSE.txt`); the flags are national symbols | all | ₹0 | User decision "allow real country names and national flags" | 2026-11-20 |
 | West Indies badge (`online/web/flags/WI.svg`) | SVG image | made by us (West Indies has no national flag) | ours | all | ₹0 | - | 2026-11-20 |
+| MakeHuman base mesh, default skeleton + skin weights, 4 body-shape targets (`visual/assets/makehuman/`) | 3D human mesh, rig, shape data | MakeHuman project (github.com/makehumancommunity/makehuman, raw files) | **CC0 1.0** (see `visual/assets/makehuman/LICENSE.md`); no MakeHuman program code is used | all | ₹0 | User decision "start with free tools and assets" | 2026-11-22 |
+| Bat, ball, stumps, pads, gloves, helmet, cap, pitch, grass, sky (`visual/blender/*.py`) | procedural 3D models / materials | made by us in Blender scripts | ours | all | ₹0 | - | 2026-11-22 |
 
 ## Current rules
 

@@ -1,6 +1,12 @@
 # CRICKET UNLEASHED: Realistic 3D Plan (first playable prototype → full T20)
 
-Date: 2026-11-22. **Status: PLAN ONLY.** No 3D player, animation, pitch
+Date: 2026-11-22. **Status update (2026-11-22):** a free **Blender preview**
+of one complete delivery now exists (`visual/`, pictures and videos in
+`docs/media/3d/`): MakeHuman (CC0) bodies with painted-on kit and hand-keyed
+poses, ball path from our physics. It is a PLACEHOLDER-quality preview, not
+the realistic MetaHuman/Unreal target below.
+
+Original status: **PLAN ONLY.** No 3D player, animation, pitch
 model or stadium exists yet (see the audit, commit `023d8c8`). Nothing will
 be bought or subscribed to without your approval. Prices are approximate
 (late 2026, India) and change often, especially memory and graphics cards.
